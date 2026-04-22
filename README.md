@@ -4,18 +4,7 @@ A custom Screen Space Global Illumination (SSGI) prototype implemented as a **UE
 
 This project focuses not only on implementing real-time GI, but also on **profiling bottlenecks and optimizing the pipeline for practical performance**.
 
-> **Key result:** Reduced the total pipeline cost from **1.85 ms to 0.46 ms** (~75.13% optimization) while preserving visual quality.
-
----
-
-## Demo
-
-- Portfolio: [PDF link]
-- Demo Video: [YouTube link]
-
-<p align="center">
-  <img src="Docs/final_result.png" width="80%" alt="Final result">
-</p>
+> **Key result:** Implemented custom SSGI system on UE5. Reduced the total pipeline cost from **1.85 ms to 0.46 ms** (~75.13% optimization) while preserving visual quality.
 
 ---
 
@@ -50,6 +39,10 @@ To answer that, I built a custom SSGI pipeline from scratch inside UE5 by:
 - redesigning the slowest parts of the pipeline
 
 This repository is the technical implementation behind the portfolio project submitted for a graphics programming role.
+
+<p align="center">
+  <img src="Docs/final_result.png" width="80%" alt="Final result">
+</p>
 
 ---
 
@@ -147,6 +140,10 @@ The most important part of this project was not just making GI work, but making 
 Using **NVIDIA Nsight**, I found that the main performance bottlenecks were:
 - the ray marching pass
 - the blur / denoising pass
+
+<p align="center">
+  <img src="Docs/perf_before.png" width="80%" alt="performance Before">
+</p>
 
 ### Optimization work
 - Converted brute-force **3D ray marching** into a more efficient **2.5D DDA-based traversal**
@@ -253,7 +250,7 @@ Shader implementation for:
 ## Build / Run
 
 ### Tested Environment
-- **Engine Version:** UE 5.x.x *(replace with your exact version)*
+- **Engine Version:** UE 5.7.4
 - **OS:** Windows
 - **IDE:** Visual Studio 2022
 
@@ -315,17 +312,7 @@ The most valuable part of this work was moving from **â€œeffect implementationâ€
 
 ---
 
-## Related Materials
-
-- Portfolio PDF: [link]
-- Demo video: [link]
-- Other rendering projects:
-  - [ISM real-time GI repo link]
-  - [C++ Path Tracer repo link]
-
----
-
 ## Contact
 
-- GitHub: [your profile link]
-- Email: [your email]
+- GitHub: https://github.com/whlee503
+- Email: whlee503@ajou.ac.kr
