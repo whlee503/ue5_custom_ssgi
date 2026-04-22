@@ -141,6 +141,10 @@ Using **NVIDIA Nsight**, I found that the main performance bottlenecks were:
 - the ray marching pass
 - the blur / denoising pass
 
+<p align="center">
+  <img src="Docs/final_result.png" width="80%" alt="perf_before">
+</p>
+
 ### Optimization work
 - Converted brute-force **3D ray marching** into a more efficient **2.5D DDA-based traversal**
 - Replaced expensive 2D blur with **separable Gaussian blur**
