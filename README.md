@@ -158,7 +158,7 @@ Using **NVIDIA Nsight**, I found that the main performance bottlenecks were:
 <p align="center">
   <img src="Docs/nsight_profile.png" width="48%" alt="Nsight profiling">
   <img src="Docs/perf_after.png" width="48%" alt="Performance After">
-</p>
+<p align="center">
   <img src="Docs/final_result.png" width="80%" alt="Final result">
 </p>
 
