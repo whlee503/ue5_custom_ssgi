@@ -142,7 +142,7 @@ Using **NVIDIA Nsight**, I found that the main performance bottlenecks were:
 - the blur / denoising pass
 
 <p align="center">
-  <img src="Docs/final_result.png" width="80%" alt="perf_before">
+  <img src="Docs/perf_before.png" width="80%" alt="performance Before">
 </p>
 
 ### Optimization work
