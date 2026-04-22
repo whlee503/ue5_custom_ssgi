@@ -4,7 +4,7 @@ A custom Screen Space Global Illumination (SSGI) prototype implemented as a **UE
 
 This project focuses not only on implementing real-time GI, but also on **profiling bottlenecks and optimizing the pipeline for practical performance**.
 
-> **Key result:** Reduced the total pipeline cost from **1.85 ms to 0.46 ms** (~75.13% optimization) while preserving visual quality.
+> **Key result:** Implemented custom SSGI system on UE5. Reduced the total pipeline cost from **1.85 ms to 0.46 ms** (~75.13% optimization) while preserving visual quality.
 
 ---
 
