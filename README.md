@@ -253,7 +253,7 @@ Shader implementation for:
 ## Build / Run
 
 ### Tested Environment
-- **Engine Version:** UE 5.x.x *(replace with your exact version)*
+- **Engine Version:** UE 5.7.3
 - **OS:** Windows
 - **IDE:** Visual Studio 2022
 
