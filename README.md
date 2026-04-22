@@ -10,7 +10,7 @@ This project focuses not only on implementing real-time GI, but also on **profil
 
 ## Demo
 
-- Portfolio: [PDF link]
+- Portfolio: [PDF link]    #삭제 예정
 - Demo Video: [YouTube link]
 
 <p align="center">
@@ -317,7 +317,7 @@ The most valuable part of this work was moving from **“effect implementation�
 
 ## Related Materials
 
-- Portfolio PDF: [link]
+- Portfolio PDF: [link]    #삭제 예정
 - Demo video: [link]
 - Other rendering projects:
   - [ISM real-time GI repo link]
@@ -327,5 +327,5 @@ The most valuable part of this work was moving from **“effect implementation�
 
 ## Contact
 
-- GitHub: [your profile link]
-- Email: [your email]
+- GitHub: https://github.com/whlee503
+- Email: whlee503@ajou.ac.kr
