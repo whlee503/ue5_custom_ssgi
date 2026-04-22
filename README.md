@@ -22,6 +22,9 @@ That means the repository can be reviewed in two ways:
 ---
 
 ## Overview
+<p align="center">
+  <img src="Docs/final_result.png" width="80%" alt="Final result">
+</p>
 
 This project started from a simple question:
 
@@ -39,10 +42,6 @@ To answer that, I built a custom SSGI pipeline from scratch inside UE5 by:
 - redesigning the slowest parts of the pipeline
 
 This repository is the technical implementation behind the portfolio project submitted for a graphics programming role.
-
-<p align="center">
-  <img src="Docs/final_result.png" width="80%" alt="Final result">
-</p>
 
 ---
 
@@ -158,7 +157,7 @@ Using **NVIDIA Nsight**, I found that the main performance bottlenecks were:
 
 <p align="center">
   <img src="Docs/nsight_profile.png" width="48%" alt="Nsight profiling">
-  <img src="Docs/performance Before.png" width="48%" alt="Performance After">
+  <img src="Docs/perf_after.png" width="48%" alt="Performance After">
 </p>
   <img src="Docs/final_result.png" width="80%" alt="Final result">
 </p>
