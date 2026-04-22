@@ -8,17 +8,6 @@ This project focuses not only on implementing real-time GI, but also on **profil
 
 ---
 
-## Demo
-
-- Portfolio: [PDF link]    #삭제 예정
-- Demo Video: [YouTube link]
-
-<p align="center">
-  <img src="Docs/final_result.png" width="80%" alt="Final result">
-</p>
-
----
-
 ## Verification Status
 
 This repository is not just a code snapshot of the plugin source.
@@ -50,6 +39,10 @@ To answer that, I built a custom SSGI pipeline from scratch inside UE5 by:
 - redesigning the slowest parts of the pipeline
 
 This repository is the technical implementation behind the portfolio project submitted for a graphics programming role.
+
+<p align="center">
+  <img src="Docs/final_result.png" width="80%" alt="Final result">
+</p>
 
 ---
 
