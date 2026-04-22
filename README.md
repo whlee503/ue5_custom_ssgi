@@ -308,16 +308,6 @@ The most valuable part of this work was moving from **“effect implementation�
 
 ---
 
-## Related Materials
-
-- Portfolio PDF: [link]    #삭제 예정
-- Demo video: [link]
-- Other rendering projects:
-  - [ISM real-time GI repo link]
-  - [C++ Path Tracer repo link]
-
----
-
 ## Contact
 
 - GitHub: https://github.com/whlee503
