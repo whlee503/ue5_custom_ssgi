@@ -2,7 +2,7 @@
 #include "/Engine/Private/Common.ush"
 #include "/Engine/Private/DeferredShadingCommon.ush" 
 
-// C++에서 꽂아준 진짜 화면 텍스처와 샘플러 선언
+// 화면 텍스처와 샘플러 선언
 Texture2D MySceneColor;
 SamplerState MySceneColorSampler;
 
@@ -10,15 +10,13 @@ SamplerState MySceneColorSampler;
 Texture2D HistoryTexture;
 SamplerState HistorySampler;
 
-// 모션 벡터를 받을 그릇을 선언합니다.
+// 모션 벡터를 받을 그릇을 선언
 //Texture2D VelocityTexture;
 //SamplerState VelocitySampler;
 
 // ==========================================
 // 몬테카를로 샘플링을 위한 난수 생성기 (White Noise)
 // ==========================================
-// 현재 픽셀의 UV 좌표를 '씨앗(Seed)'으로 삼아서, 
-// 0.0 ~ 1.0 사이의 무작위 난수를 뱉어냅니다.
 
 float Hash(float2 Co)
 {
@@ -26,16 +24,15 @@ float Hash(float2 Co)
 }
 
 // ==========================================
-// [추가] 고속 할톤 시퀀스 함수 (Halton Sequence)
+// 고속 할톤 시퀀스 함수 (Halton Sequence)
 // ==========================================
-// Base(진법)에 따라 숫자를 뒤집어서 0~1 사이의 균등한 소수를 만듭니다.
 float GetHalton(uint Index, uint Base)
 {
     float Result = 0.0f;
     float Fraction = 1.0f / (float) Base;
     uint i = Index;
     
-    // 언리얼 컴파일러가 루프를 10번으로 고정(Unroll)하여 성능 저하를 막습니다.
+    // 언리얼 컴파일러가 루프를 10번으로 고정(Unroll)하여 성능 저하를 막음
     [unroll(10)] 
     while (i > 0)
     {
@@ -51,9 +48,9 @@ void MainPS(
     out float4 OutDiffuse : SV_Target0,
     out float4 OutSpecular : SV_Target1)
 {
-    // 1. 화면 해상도에 완벽하게 맞는 UV 추출
+    // 화면 해상도에 완벽하게 맞는 UV 추출
     float2 UV = SvPosition.xy * View.BufferSizeAndInvSize.zw;
-    // 🌟 1. 현재 픽셀의 '원본 씬 컬러'를 미리 저장해 둡니다.
+    // 현재 픽셀의 원본 씬 컬러를 미리 저장
     float3 OriginalColor = MySceneColor.SampleLevel(MySceneColorSampler, UV, 0).rgb;
     
     float SceneDepth = CalcSceneDepth(UV);
@@ -66,11 +63,11 @@ void MainPS(
     //}
     
     // 엔진 공식 내장 함수로 GPS 복원
-    // 카메라가 중심(0,0,0)인 'Translated World Space' 좌표를 완벽하게 반환합니다.
+    // 카메라가 중심(0,0,0)인 'Translated World Space' 좌표를 반환
     float3 TranslatedWorldPos = SvPositionToTranslatedWorld(float4(SvPosition.xy, DeviceZ, 1.0f)).xyz;
     // 엔진 공식 함수! G-Buffer, 픽셀의 머티리얼 정보
     FScreenSpaceData ScreenSpaceData = GetScreenSpaceData(UV, false);
-    // '월드 노멀(표면이 바라보는 방향)' 데이터만 쏙 빼옵니다.
+    // '월드 노멀(표면이 바라보는 방향)' 데이터
     FGBufferData GBuffer = ScreenSpaceData.GBuffer;
 
     float3 BaseColor = GBuffer.BaseColor;
@@ -83,11 +80,11 @@ void MainPS(
     float3 V = normalize(-TranslatedWorldPos);
     float NdotV = saturate(dot(WorldNormal, V));
 
-    // F0: 수직 입사 반사율. 비금속은 0.04, 금속은 BaseColor를 사용합니다.
+    // F0: 수직 입사 반사율. 비금속은 0.04, 금속은 BaseColor를 사용
     float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), BaseColor, Metallic);
 
     // 프레넬 근사치 (Schlick's Approximation)
-    // 거칠기(Roughness)를 고려하여 반사광이 퍼지는 정도를 보정합니다.
+    // 거칠기(Roughness)를 고려하여 반사광이 퍼지는 정도를 보정
     float3 F = F0 + (max(float3(1.0f - Roughness, 1.0f - Roughness, 1.0f - Roughness), F0) - F0) * pow(1.0f - NdotV, 5.0f);
 
     // 에너지 분배
@@ -96,8 +93,8 @@ void MainPS(
     kD *= (1.0f - Metallic); // 금속은 난반사가 없으므로 0으로 만듭니다.
         
     
-    // 4. 🌟 시선 벡터 (View Direction) 계산
-    // 카메라는 (0,0,0)에 있으므로, 픽셀 위치를 정규화(길이를 1로 만듦)하면 시선 방향이 됩니다.
+    // 시선 벡터 (View Direction) 계산
+    // 카메라는 (0,0,0)에 있으므로, 픽셀 위치를 정규화(길이를 1로 만듦)하면 시선 방향
     float3 ViewDir = normalize(TranslatedWorldPos);
     
     
@@ -110,24 +107,23 @@ void MainPS(
 
     
     
-    
     // ==========================================
-    // 🌟 [개편] QMC 기반 난수 생성 (Randomized Halton)
+    // QMC 기반 난수 생성 (Randomized Halton)
     // ==========================================
     // 1. 공간적 고정 시드 (Spatial Seed) - 픽셀마다 고유한 시작점(Offset) 부여
     float SpatialSeed1 = Hash(SvPosition.xy * 12.34f);
     float SpatialSeed2 = Hash(SvPosition.xy * 56.78f);
     float SpatialSeed3 = Hash(SvPosition.xy * 90.12f);
     
-    // 2. 시간적 할톤 시퀀스 (Temporal Halton) - 매 프레임 빈틈없이 채우는 수열
-    // Halton의 Base는 반드시 소수(Prime Number)를 써야 차원 간에 패턴이 겹치지 않습니다!
+    // 시간적 할톤 시퀀스 (Temporal Halton) - 매 프레임 빈틈없이 채우는 수열
+    // Halton의 Base는 반드시 소수
     uint FrameCounter = View.StateFrameIndex % 1024;
     float Halton2 = GetHalton(FrameCounter, 2); // X축 (CosTheta 용)
     float Halton3 = GetHalton(FrameCounter, 3); // Y축 (Phi 용)
     float Halton5 = GetHalton(FrameCounter, 5); // Z축 (Lobe 확률 룰렛 용)
 
-    // 3. 크랜리-패터슨 회전 결합 (Cranley-Patterson Rotation)
-    // 픽셀의 고유한 공간 난수에, 매 프레임 변하는 할톤 수열을 더해서 0~1 사이로 순환시킵니다.
+    // 크랜리-패터슨 회전 결합 (Cranley-Patterson Rotation)
+    // 픽셀의 고유한 공간 난수에, 매 프레임 변하는 할톤 수열을 더해서 0~1 사이로 순환
     float Rand1 = frac(SpatialSeed1 + Halton2);
     float Rand2 = frac(SpatialSeed2 + Halton3);
     float Rand3 = frac(SpatialSeed3 + Halton5); // 로브 선택용 난수
@@ -136,7 +132,7 @@ void MainPS(
     // ==========================================
     // 방향 1: 디퓨즈용 무작위 난반사 벡터 (Cosine-Weighted)
     // ==========================================
-    // UV에 FrameJitter를 더해서, 프레임마다 레이의 방향이 무작위로 회전하게 만듭니다!
+    // UV에 FrameJitter를 더해서, 프레임마다 레이의 방향이 무작위로 회전
     //float Rand1 = Hash(UV * 123.4f + JitterOffset);
     //float Rand2 = Hash(UV * 567.8f + JitterOffset * 2.1f);
     
@@ -154,7 +150,7 @@ void MainPS(
     //float RandS1 = Hash(UV * 234.5f + JitterOffset * 3.2f);
     //float RandS2 = Hash(UV * 678.9f + JitterOffset * 4.3f);
 
-    // 에픽게임즈 PBR 규칙: 시각적 선형성을 위해 Roughness를 제곱해서 사용합니다 (a = Roughness^2).
+    // 에픽게임즈 PBR 규칙: 시각적 선형성을 위해 Roughness를 제곱해서 사용 (a = Roughness^2).
     float a = clamp(Roughness * Roughness, 0.001f, 1.0f);
     float a2 = a * a;
 
@@ -169,10 +165,10 @@ void MainPS(
     // 월드 공간의 미세면 노멀(H)로 변환
     float3 H = Tangent * TangentSpaceH.x + Binormal * TangentSpaceH.y + WorldNormal * TangentSpaceH.z;
 
-    // 최종 스펙큘러 방향: 시선(ViewDir)을 매끈한 WorldNormal이 아니라, 삐뚤어진 미세면(H)에 튕겨냅니다!
+    // 최종 스펙큘러 방향: 시선(ViewDir)을 매끈한 WorldNormal이 아니라, 삐뚤어진 미세면(H)에 튕겨냄
     float3 SpecularDir = reflect(ViewDir, H);
 
-    // (참고: 빛이 표면 아래로 뚫고 들어가는 것을 방지)
+    // 빛이 표면 아래로 뚫고 들어가는 것을 방지
     if (dot(SpecularDir, WorldNormal) < 0.0f)
     {
         SpecularDir = -SpecularDir;
@@ -183,14 +179,13 @@ void MainPS(
     // ==========================================
     // 확률적 로브 선택 (Stochastic Lobe Selection)
     // ==========================================
-    // 룰렛을 돌리는 난수 역시 프레임마다 결과가 바뀌어야 합니다!
     //float Rand3 = Hash(UV * 891.2f + JitterOffset * 5.4f);
     
-    // [핵심 수정] 스펙큘러와 디퓨즈의 '에너지 크기(Luminance)'를 각각 구합니다.
+    // 스펙큘러와 디퓨즈의 에너지 크기(Luminance)
     float SpecEnergy = dot(kS, float3(0.3333f, 0.3333f, 0.3333f));
     float DiffuseEnergy = dot(kD * BaseColor, float3(0.3333f, 0.3333f, 0.3333f));
     
-    // 전체 산란되는 빛 중에서 스펙큘러가 차지하는 비중을 확률로 씁니다.
+    // 전체 산란되는 빛 중에서 스펙큘러가 차지하는 비중을 확률로 씀
     float SpecProbability = SpecEnergy / max(SpecEnergy + DiffuseEnergy, 0.0001f);
     
     
@@ -199,20 +194,20 @@ void MainPS(
 
     if (Rand3 < SpecProbability)
     {
-        // 당첨! 이 픽셀은 거울 반사(Specular) 레이를 쏩니다.
+        // 이 픽셀은 거울 반사(Specular) 레이
         RayDir = SpecularDir;
         bIsSpecularRay = true;
     }
     else
     {
-        // 꽝! 이 픽셀은 난반사(Diffuse) 레이를 쏩니다.
+        // 이 픽셀은 난반사(Diffuse) 레이
         RayDir = DiffuseDir;
         bIsSpecularRay = false;
     }
     
  
    
-    // ================= 본격적인 레이 마칭 (Screen-Space DDA)=================
+    // ================= 본격적인 레이 마칭 (Screen-Space DDA) =================
     
     // 1. 최대 탐색 거리 설정 (예: 5미터)
     float MaxRayLength = 2000.0f;
@@ -221,7 +216,7 @@ void MainPS(
     float3 RayStart = TranslatedWorldPos + WorldNormal * 2.0f; // 표면에서 2cm 띄움 (Self-intersection 방지)
     float3 RayEnd = RayStart + RayDir * MaxRayLength;
 
-    // 3. 시작점과 끝점을 2D 클립 공간(화면 좌표)으로 미리! 변환합니다. (행렬 곱셈은 루프 밖에서 단 2번만!)
+    // 3. 시작점과 끝점을 2D 클립 공간(화면 좌표)으로 미리 변환 (행렬 곱셈은 루프 밖에서 단 2번)
     float4 StartClipPos = mul(float4(RayStart, 1.0f), View.TranslatedWorldToClip);
     float4 EndClipPos = mul(float4(RayEnd, 1.0f), View.TranslatedWorldToClip);
 
@@ -245,11 +240,11 @@ void MainPS(
     // DeviceZ(깊이) 1걸음의 크기
     float StepZ = (EndScreen.z - StartScreen.z) / (float) MaxSteps;
 
-    // 5. 🌟 지터링 (Jittering): 픽셀마다 시작 위치를 무작위로 흔들어줍니다!
-    // (이미 구현해두신 QMC Rand1 난수를 활용합니다. 0.0 ~ 1.0 사이의 값)
+    // 지터링 (Jittering): 픽셀마다 시작 위치를 무작위로
+    // (이미 구현해두신 QMC Rand1 난수를 활용. 0.0 ~ 1.0 사이의 값)
     float JitterOffset = Rand1;
     
-    // 시작점에 Jitter를 더해서 레이마다 걷는 템포를 엇갈리게 만듭니다.
+    // 시작점에 Jitter를 더해서 레이마다 걷는 템포를 엇갈리게
     float2 CurrentUV = StartUV + StepUV * JitterOffset;
     float CurrentZ = StartScreen.z + StepZ * JitterOffset;
 
@@ -263,17 +258,16 @@ void MainPS(
         if (any(CurrentUV < 0.0f) || any(CurrentUV > 1.0f))
             break;
 
-        // 🌟 [최적화] 루프 내부에는 오직 덧셈과 샘플링뿐입니다! (mul 행렬 곱셈 증발)
+        // [최적화] 루프 내부에는 오직 덧셈과 샘플링 (mul 행렬 곱셈 제거)
         
-        // 현재 UV 위치의 씬 깊이(DeviceZ)를 읽어옵니다. (CalcSceneDepth 대신 빠름)
+        // 현재 UV 위치의 씬 깊이(DeviceZ)를 읽어옴 (CalcSceneDepth 보다 빠름)
         float SurfaceZ = LookupDeviceZ(CurrentUV);
         
         // 깊이 비교: CurrentZ(레이의 깊이)가 SurfaceZ(지형의 깊이)보다 작다 
-        // = 화면 안쪽으로 더 깊이 파고들었다 = 물체 내부로 들어갔다!
-        // (주의: DeviceZ는 1.0이 카메라 앞, 0.0이 먼 곳입니다. 일반 Depth와 반대입니다)
+        // (주의: DeviceZ는 일반 Depth와 반대입니다)
         if (CurrentZ < SurfaceZ)
         {
-            // 실제 카메라로부터의 거리(단위: cm)로 변환하여 두께를 검사합니다.
+            // 실제 카메라로부터의 거리(cm)로 변환하여 두께를 검사
             float RayDepth = ConvertFromDeviceZ(CurrentZ);
             float SurfaceDepth = ConvertFromDeviceZ(SurfaceZ);
             float DepthDiff = RayDepth - SurfaceDepth;
@@ -282,13 +276,13 @@ void MainPS(
             if (DepthDiff > 1.0f && DepthDiff < 200.0f)
             {
                 bHit = true;
-                // 부딪힌 곳의 색상을 가져옵니다.
+                // 부딪힌 곳의 색상
                 HitColor = MySceneColor.SampleLevel(MySceneColorSampler, CurrentUV, 0).rgb;
                 break;
             }
         }
 
-        // 다음 걸음으로 뚜벅뚜벅 전진
+        // Marching
         CurrentUV += StepUV;
         CurrentZ += StepZ;
     }
@@ -306,7 +300,7 @@ void MainPS(
 
     if (bHit)
     {
-        // 몬테카를로 적분의 핵심: 자신이 당첨된 확률(PDF)로 나누어 주어야 에너지가 보존됩니다!
+        // 몬테카를로 적분의 핵심: 자신이 당첨된 확률(PDF)로 나누어 주어야 에너지가 보존
         if (bIsSpecularRay)
         {
             // ==========================================
@@ -320,7 +314,7 @@ void MainPS(
             float VdotH = saturate(dot(V, ActualH));
             float NdotV_clamped = max(NdotV, 0.001f);
 
-            // 2. 진짜 미세면 프레넬 (Fresnel) - NdotV가 아닌 VdotH 사용!
+            // 2. 진짜 미세면 프레넬 (Fresnel) - NdotV가 아닌 VdotH 사용
             float3 F_microfacet = F0 + (max(float3(1.0f - Roughness, 1.0f - Roughness, 1.0f - Roughness), F0) - F0) * pow(1.0f - VdotH, 5.0f);
 
             // 3. 지오메트리 섀도잉 (Geometry Term - Schlick-GGX)
@@ -336,11 +330,11 @@ void MainPS(
             // 스펙큘러 레이가 부딪힌 경우
             //FinalGI = HitColor * kS / max(SpecProbability, 0.001f);
             
-            // 5. 스펙큘러 레이 결괏값 도출 (가짜 kS 대신 진짜 SpecularWeight 사용!)
+            // 5. 스펙큘러 레이 결괏값 도출 (SpecularWeight 사용)
             float3 FinalSpecular = HitColor * SpecularWeight / max(SpecProbability, 0.001f);
             //float3 FinalSpecular = HitColor * kS / max(SpecProbability, 0.001f);
             
-            // 🔥 스펙큘러 도화지에 기록, 디퓨즈는 까맣게 비움!
+            // 스펙큘러에 기록, 디퓨즈는 비움
             OutSpecular = float4(FinalSpecular, 1.0f);
             OutDiffuse = float4(0.0f, 0.0f, 0.0f, 1.0f);
         }
@@ -352,7 +346,7 @@ void MainPS(
             // 디퓨즈 레이 결괏값 도출
             float3 FinalDiffuse = HitColor * BaseColor * kD / max(1.0f - SpecProbability, 0.001f);
             
-            // 🔥 디퓨즈 도화지에 기록, 스펙큘러는 까맣게 비움!
+            //디퓨즈에 기록, 스펙큘러는 비움
             OutDiffuse = float4(FinalDiffuse, 1.0f);
             OutSpecular = float4(0.0f, 0.0f, 0.0f, 1.0f);
         }
@@ -360,12 +354,12 @@ void MainPS(
     }
     else
     {
-        // 빗나갔을 경우 둘 다 까맣게 칠합니다.
+        // 빗나갔을 경우 둘 다 비움
         OutDiffuse = float4(0.0f, 0.0f, 0.0f, 1.0f);
         OutSpecular = float4(0.0f, 0.0f, 0.0f, 1.0f);
     }
     
-    // 첫 번째 패스는 최종 계산된 GI 색상만 다음 도화지로 넘깁니다.
+    // 첫 번째 패스는 최종 계산된 GI 색상만 다음으로 넘김
     //OutColor = float4(FinalGI, 1.0f);
     
     
@@ -378,7 +372,7 @@ void MainPS(
     //OutColor = float4(GridColor, 1.0f);
     //OutColor = float4(RayColor, 1.0f);
     
-    // 5. 출력! (부딪혔으면 그 색상을, 허공으로 날아갔으면 까만색 출력)
+    // 5. 출력
     //OutColor = float4(HitColor, 1.0f);
     
 }
@@ -386,7 +380,7 @@ void MainPS(
 
 
 // ==========================================
-// 🌟 두 번째 패스: 디노이즈 X축 (DenoiseX_PS)
+// 두 번째 패스: 디노이즈 X축 (DenoiseX_PS)
 // ==========================================
 Texture2D NoisyDiffuseTexture;
 Texture2D NoisySpecularTexture;
@@ -397,7 +391,7 @@ void DenoiseX_PS(
     out float4 OutIntermSpecular : SV_Target1
 )
 {
-    // 🔥 언리얼 엔진의 '진짜 화면' 한계선 가져오기
+    // 언리얼 엔진의 '진짜 화면' 한계선
     float4 ValidUVRect = View.BufferBilinearUVMinMax;
     float2 UV = SvPosition.xy * View.BufferSizeAndInvSize.zw;
     float2 TexelSize = View.BufferSizeAndInvSize.zw;
@@ -413,12 +407,12 @@ void DenoiseX_PS(
     float3 CenterNormal = CenterData.GBuffer.WorldNormal;
 
     float3 BlurredDiffuse = float3(0.0f, 0.0f, 0.0f);
-    float3 BlurredSpecular = float3(0.0f, 0.0f, 0.0f); // 🔥 추가
+    float3 BlurredSpecular = float3(0.0f, 0.0f, 0.0f);
     float WeightSum = 0.0f;
         
     
     int BlurRadius = 5; // 5x5 커널 크기
-    // 블러의 퍼짐 정도(Sigma)를 결정합니다. 보통 Radius의 절반 정도가 자연스럽습니다.
+    // 블러의 퍼짐 정도(Sigma)를 결정. 보통 Radius의 절반 정도
     float Sigma = BlurRadius * 0.69f;
     float Sigma2 = 2.0f * Sigma * Sigma;
     
@@ -426,7 +420,7 @@ void DenoiseX_PS(
     // 2. 바이래터럴 필터 루프
     for (int i = -BlurRadius; i <= BlurRadius; ++i)
     {
-        // 🔥 [수정 1] UV 덧셈 대신 정수형 픽셀 좌표를 직접 더합니다.
+        // UV 덧셈 대신 정수형 픽셀 좌표를 직접 더함
         int2 OffsetPixel = CenterPixelPos + int2(i, 0);
             
         int2 ViewRectMin = int2(ValidUVRect.xy * View.BufferSizeAndInvSize.xy);
@@ -434,16 +428,16 @@ void DenoiseX_PS(
         OffsetPixel = clamp(OffsetPixel, ViewRectMin, ViewRectMax);
 
         //float2 OffsetUV = UV + float2(x, y) * TexelSize;
-        // 픽셀 좌표를 다시 UV로 예쁘게 변환 (Depth나 Normal을 읽을 때 사용)
+        // 픽셀 좌표를 다시 UV로 변환 (Depth나 Normal을 읽을 때 사용)
         float2 OffsetUV = (OffsetPixel + 0.5f) * TexelSize;
         float SampleDepth = CalcSceneDepth(OffsetUV);
             
         // 화면 밖으로 나가는 UV 샘플링 방지 (아티팩트 제거)
-        // 🔥 [수정] 0.0 ~ 1.0 이 아니라, 실제 렌더링 영역을 기준으로 검사합니다!
+        //  0.0 ~ 1.0 이 아니라, 실제 렌더링 영역을 기준으로 검사
         if (any(OffsetUV < ValidUVRect.xy) || any(OffsetUV > ValidUVRect.zw))
             continue;
 
-        // 🌟 [추가] 스카이박스 킬스위치!
+        // 스카이박스 킬스위치
         if (SampleDepth > 100000.0f)    continue;
         
         // 주변 픽셀(Neighbor)의 정보 추출
@@ -459,26 +453,24 @@ void DenoiseX_PS(
         // 가중치 계산 (Weighting)
         // --------------------------------------------------
         // A. 깊이 가중치 (Depth Weight)
-        // 깊이 차이가 클수록 지수 함수(exp)에 의해 가중치가 0에 수렴합니다.
+        // 깊이 차이가 클수록 지수 함수(exp)에 의해 가중치가 0에 수렴
         //float DepthDiff = abs(CenterDepth - SampleDepth);
         
         float PlaneDist = abs(dot(CenterNormal, SamplePos - CenterPos));
         
-        // 🛡️ [추가 1] 하드 컷오프 (Hard Cutoff)
-        // 깊이 차이가 일정 수치(예: 30cm) 이상 나면, HDR 빛샘을 막기 위해 가차 없이 버립니다!
-        // 이 한 줄이 가장자리가 타오르는 현상을 99% 막아줍니다.
+        // 하드 컷오프 (Hard Cutoff)
         if (PlaneDist > 300.0f) 
             continue;
         float DepthWeight = exp(-PlaneDist * 0.5f);
         
             
         // B. 노멀 가중치 (Normal Weight)
-        // 내적(dot) 값이 작을수록(각도가 다를수록) 가중치가 0에 수렴합니다.
+        // 내적(dot) 값이 작을수록(각도가 다를수록) 가중치가 0에 수렴
         float NormalDot = saturate(dot(CenterNormal, SampleNormal));
         float NormalWeight = pow(NormalDot, 16.0f); // 16.0f는 민감도 (숫자가 클수록 깐깐하게 검사)
             
         // ==========================================
-        // 🌟 C. [추가] 공간 가우시안 가중치 (Spatial Weight)
+        // C. 공간 가우시안 가중치 (Spatial Weight)
         // ==========================================
         // 중심(0,0)일 때 1.0, 멀어질수록 0에 가깝게 떨어집니다.
         float SpatialWeight = exp(-(i * i) / Sigma2);
@@ -490,15 +482,13 @@ void DenoiseX_PS(
 
         
         //float3 SampleGI = NoisyDiffuseTexture.SampleLevel(CommonSampler, OffsetUV, 0).rgb;
-        // 🌟 [핵심 수정] SampleLevel -> Load 변경
+        // SampleLevel -> Load 변경
         float3 SampleDiff = NoisyDiffuseTexture.Load(int3(OffsetPixel, 0)).rgb;
         float3 SampleSpec = NoisySpecularTexture.Load(int3(OffsetPixel, 0)).rgb;
 
         // ==========================================
-        // 🌟 C. [핵심] HDR 톤맵 압축 (Firefly 킬러)
+        // C. HDR 톤맵 압축 (Firefly 킬러)
         // ==========================================
-        // 엄청나게 밝은 픽셀이 가장자리에서 2배로 폭주하는 것을 막기 위해,
-        // 밝기(Luminance)를 계산하여 0~1 사이로 찌그러뜨립니다! (Reinhard Tonemap)
         //float Luma = dot(SampleGI, float3(0.2126f, 0.7152f, 0.0722f));
         //float CompressWeight = 1.0f / (1.0f + Luma);
 
@@ -517,19 +507,18 @@ void DenoiseX_PS(
     if (WeightSum > 0.0f)
     {
         //BlurredGI /= WeightSum;
-        // 2. 찌그러졌던 색상을 다시 원래의 강력한 HDR 빛으로 팽창시킵니다!
         //float BlurredLuma = dot(BlurredGI, float3(0.2126f, 0.7152f, 0.0722f));
         //BlurredGI = BlurredGI / max(1.0f - BlurredLuma, 0.0001f);
         
         BlurredDiffuse /= WeightSum;
         BlurredSpecular /= WeightSum;
     
-        // 🔥 [안전장치 추가] 1.0이 넘어가는 수학적 폭발을 원천 봉쇄
+        // 1.0이 넘어가는 수학적 폭발을 원천 봉쇄
         //BlurredGI = BlurredGI / max(1.0f - min(BlurredLuma, 0.999f), 0.0001f);
     }
         
     OutIntermDiffuse = float4(BlurredDiffuse, 1.0f);
-    OutIntermSpecular = float4(BlurredSpecular, 1.0f); // 🔥 저장
+    OutIntermSpecular = float4(BlurredSpecular, 1.0f); 
     
     //float3 RawSpecular = NoisySpecularTexture.Load(OffsetPixel, 0).rgb;
     //float SpecularBlurStrength = saturate(Roughness * 2.0f);
@@ -539,18 +528,18 @@ void DenoiseX_PS(
 
 
 // ==========================================
-// 🌟 세 번째 패스: 디노이즈 (Y축) & 화면 합성 (DenoiseY_PS)
+// 세 번째 패스: 디노이즈 (Y축) & 화면 합성 (DenoiseY_PS)
 // ==========================================
 //Texture2D NoisyInputTexture;
 //SamplerState NoisyInputSampler;
 
 Texture2D IntermediateDiffuseTexture; // X에서 블러된 결과물
-Texture2D IntermediateSpecularTexture; // X에서 가로로 블러된 결과물!
+Texture2D IntermediateSpecularTexture; // X에서 가로로 블러된 결과물
 //Texture2D NoisyDiffuseTexture;
 //Texture2D NoisySpecularTexture;
 Texture2D HistoryDiffuseTexture;
 Texture2D HistorySpecularTexture;
-SamplerState CommonSampler; // 샘플러는 하나만 돌려 써도 충분합니다.
+SamplerState CommonSampler; // 샘플러는 하나만 돌려 써도 충분
 
 void DenoiseY_PS(
     in float4 SvPosition : SV_Position,
@@ -562,7 +551,7 @@ void DenoiseY_PS(
     float2 UV = SvPosition.xy * View.BufferSizeAndInvSize.zw;
     float3 OriginalColor = MySceneColor.SampleLevel(MySceneColorSampler, UV, 0).rgb;
     float SceneDepth = CalcSceneDepth(UV);
-    // 🔥 [추가] 정수형 픽셀 좌표계
+    // 정수형 픽셀 좌표계
     int2 CenterPixelPos = int2(SvPosition.xy);
     
     float2 TexelSize = View.BufferSizeAndInvSize.zw;
@@ -582,14 +571,14 @@ void DenoiseY_PS(
     float WeightSum = 0.0f;
     
     // --------------------------------------------------
-    // 🔥 [추가] 언리얼 엔진의 '진짜 화면' 한계선 가져오기
+    // 언리얼 엔진의 '진짜 화면' 한계선
     // --------------------------------------------------
     // x, y는 최소 UV (보통 0.0 근처) / z, w는 최대 UV (해상도 비율에 맞춘 진짜 끝단)
     float4 ValidUVRect = View.BufferBilinearUVMinMax;
     
     int BlurRadius = 5; // 5x5 커널 크기
     
-    // 블러의 퍼짐 정도(Sigma)를 결정합니다. 보통 Radius의 절반 정도가 자연스럽습니다.
+    // 블러의 퍼짐 정도(Sigma)를 결정
     float Sigma = BlurRadius * 0.69f;
     float Sigma2 = 2.0f * Sigma * Sigma;
     
@@ -597,7 +586,7 @@ void DenoiseY_PS(
     // 2. 바이래터럴 필터 루프
     for (int i = -BlurRadius; i <= BlurRadius; ++i)
     {
-        // 🔥 [수정 1] UV 덧셈 대신 정수형 픽셀 좌표를 직접 더합니다.
+        // UV 덧셈 대신 정수형 픽셀 좌표를 직접 더함
         int2 OffsetPixel = CenterPixelPos + int2(0, i);
         
         int2 ViewRectMin = int2(ValidUVRect.xy * View.BufferSizeAndInvSize.xy);
@@ -606,18 +595,18 @@ void DenoiseY_PS(
         
         //float2 OffsetUV = UV + float2(x, y) * TexelSize;
             
-        // 픽셀 좌표를 다시 UV로 예쁘게 변환 (Depth나 Normal을 읽을 때 사용)
+        // 픽셀 좌표를 다시 UV로 변환 (Depth나 Normal을 읽을 때 사용)
         float2 OffsetUV = (OffsetPixel + 0.5f) * TexelSize;
             
         // 화면 밖으로 나가는 UV 샘플링 방지 (아티팩트 제거)
-        // 🔥 [수정] 0.0 ~ 1.0 이 아니라, 실제 렌더링 영역을 기준으로 검사합니다!
+        //  0.0 ~ 1.0 이 아니라, 실제 렌더링 영역을 기준으로 검사
         if (any(OffsetUV < ValidUVRect.xy) || any(OffsetUV > ValidUVRect.zw))
             continue;
 
         // 주변 픽셀(Neighbor)의 정보 추출
         float SampleDepth = CalcSceneDepth(OffsetUV);
         
-        // 🌟 [추가] 스카이박스 킬스위치!
+        // 스카이박스 킬스위치
         if (SampleDepth > 100000.0f)
             continue;
         
@@ -639,14 +628,13 @@ void DenoiseY_PS(
         float DepthWeight = exp(-PlaneDist * 0.5f);
         
         // B. 노멀 가중치 (Normal Weight)
-        // 내적(dot) 값이 작을수록(각도가 다를수록) 가중치가 0에 수렴합니다.
+        // 내적(dot) 값이 작을수록(각도가 다를수록) 가중치가 0에 수렴
         float NormalDot = saturate(dot(CenterNormal, SampleNormal));
-        float NormalWeight = pow(NormalDot, 16.0f); // 16.0f는 민감도 (숫자가 클수록 깐깐하게 검사)
+        float NormalWeight = pow(NormalDot, 16.0f); // 16.0f는 민감도 (숫자가 클수록 엄밀하게 검사)
             
         // ==========================================
-        // 🌟 C. [추가] 공간 가우시안 가중치 (Spatial Weight)
+        // 공간 가우시안 가중치 (Spatial Weight)
         // ==========================================
-        // 중심(0,0)일 때 1.0, 멀어질수록 0에 가깝게 떨어집니다.
         float SpatialWeight = exp(-(i * i) / Sigma2);
             
         // 최종 가중치 = 깊이와 노멀이 모두 통과해야 1에 가까워짐
@@ -655,15 +643,13 @@ void DenoiseY_PS(
         // * LumaWeight;
         
         
-        // 🔥🔥🔥 [핵심 수정] Y 패스는 'Intermediate' 텍스처를 읽어야 합니다!
+        // Y 패스는 'Intermediate' 텍스처를 읽어야 함
         float3 SampleDiff = IntermediateDiffuseTexture.Load(int3(OffsetPixel, 0)).rgb;
         float3 SampleSpec = IntermediateSpecularTexture.Load(int3(OffsetPixel, 0)).rgb;
         
         // ==========================================
-        // 🌟 C. [핵심] HDR 톤맵 압축 (Firefly 킬러)
+        // [핵심] HDR 톤맵 압축 (Firefly 킬러)
         // ==========================================
-        // 엄청나게 밝은 픽셀이 가장자리에서 2배로 폭주하는 것을 막기 위해,
-        // 밝기(Luminance)를 계산하여 0~1 사이로 찌그러뜨립니다! (Reinhard Tonemap)
         //float Luma = dot(SampleGI, float3(0.2126f, 0.7152f, 0.0722f));
         //float CompressWeight = 1.0f / (1.0f + Luma);
 
@@ -678,14 +664,12 @@ void DenoiseY_PS(
     if (WeightSum > 0.0f)
     {
         //BlurredGI /= WeightSum;
-        // 2. 찌그러졌던 색상을 다시 원래의 강력한 HDR 빛으로 팽창시킵니다!
         //float BlurredLuma = dot(BlurredGI, float3(0.2126f, 0.7152f, 0.0722f));
         //BlurredGI = BlurredGI / max(1.0f - BlurredLuma, 0.0001f);
         
         BlurredDiffuse /= WeightSum;
         BlurredSpecular /= WeightSum;
         
-        // 🔥 [안전장치 추가] 1.0이 넘어가는 수학적 폭발을 원천 봉쇄
         //BlurredGI = BlurredGI / max(1.0f - min(BlurredLuma, 0.999f), 0.0001f);
     }
     
@@ -705,53 +689,53 @@ void DenoiseY_PS(
     
     
     // ==========================================
-    // 🌟 1. 재투영 (Reprojection): 카메라 움직임 보정 (Static Environment)
+    // 재투영 (Reprojection): 카메라 움직임 보정 (Static Environment)
     // ==========================================
-    // 현재 픽셀을 3D 클립 공간(Clip Space) 좌표로 변환합니다.
+    // 현재 픽셀을 3D 클립 공간(Clip Space) 좌표로 변환
     float DeviceZ = LookupDeviceZ(UV);
     float2 ScreenPos = (UV - View.ScreenPositionScaleBias.wz) / View.ScreenPositionScaleBias.xy;
     float4 ClipPos = float4(ScreenPos, DeviceZ, 1.0f);
 
-    // 언리얼 엔진의 타임머신 행렬: "현재 픽셀의 3D 위치를 이전 프레임의 카메라 기준으로 다시 찍어봐!"
+    // 언리얼 엔진의 타임머신 행렬: 현재 픽셀의 3D 위치를 이전 프레임의 카메라 기준으로
     float4 PrevClipPos = mul(ClipPos, View.ClipToPrevClip);
     float2 PrevScreenPos = PrevClipPos.xy / PrevClipPos.w;
     
-    // 찾아낸 이전 프레임의 화면 UV 좌표!
+    // 찾아낸 이전 프레임의 화면 UV 좌표
     float2 PastUV = (PrevScreenPos * View.ScreenPositionScaleBias.xy) + View.ScreenPositionScaleBias.wz;
 
     
     // ==========================================
-    // 🌟 2. 움직이는 물체 보정 (Dynamic Objects Velocity)
+    // 움직이는 물체 보정 (Dynamic Objects Velocity)
     // ==========================================
-    // 캐릭터나 문이 움직이는 것은 카메라 행렬로 잡을 수 없으므로 모션 벡터를 읽어옵니다.
+    // 캐릭터나 문이 움직이는 것은 카메라 행렬로 잡을 수 없으므로 모션 벡터를 읽어옴
     //float4 EncodedVelocity = VelocityTexture.SampleLevel(VelocitySampler, UV, 0);
     
-    //// 언리얼은 속도가 있으면 x채널이 0보다 큽니다.
+    //// 언리얼은 속도가 있으면 x채널이 0보다 큽니다
     //if (EncodedVelocity.x > 0.0f)
     //{
-    //    // 압축된 모션 벡터를 실제 화면 이동량(UV 변화량)으로 디코딩합니다.
+    //    // 압축된 모션 벡터를 실제 화면 이동량(UV 변화량)으로 디코딩
     //    float2 Velocity = DecodeVelocityFromTexture(EncodedVelocity).xy;
-    //    // 현재 위치에서 이동량만큼 빼면 과거의 위치가 나옵니다!
+    //    // 현재 위치에서 이동량만큼 빼면 과거의 위치가 나옵니다
     //    PastUV = UV - Velocity;
     //}
     
     
-    // 2. 각각의 역사서에서 과거 데이터 꺼내오기
+    // 과거 데이터 꺼내오기
     float3 HistoryDiffuse = HistoryDiffuseTexture.SampleLevel(CommonSampler, PastUV, 0).rgb;
     float3 HistorySpecular = HistorySpecularTexture.SampleLevel(CommonSampler, PastUV, 0).rgb;
     
     
     
     // ==========================================
-    // 속성에 맞춘 시간적(Temporal) 알파 분리!
+    // 속성에 맞춘 시간적(Temporal) 알파 분리
     // ==========================================
     //float CenterRoughness = GetScreenSpaceData(UV, false).GBuffer.Roughness;
 
-    // 디퓨즈: 어차피 거칠고 노이즈가 많으므로 무조건 0.05로 빡빡하게 누적합니다.
+    // 디퓨즈: 어차피 거칠고 노이즈가 많으므로 0.05로 빡빡하게 누적
     float DiffuseAlpha = 0.025f;
     //float DiffuseAlpha = 1.0f;
 
-    // 스펙큘러: 거울(Roughness=0)이면 1.0(과거무시/잔상제거), 찰흙이면 0.05(과거중시)로 동적 할당!
+    // 스펙큘러: 거울(Roughness=0)이면 1.0(과거무시/잔상제거), 찰흙이면 0.05(과거중시)로 동적 할당
     float SpecularAlpha = lerp(1.0f, .05f, saturate(CenterRoughness * 16.0f));
     //float SpecularAlpha = lerp(1.0f, 1.0f, saturate(CenterRoughness * 16.0f));
 
@@ -761,18 +745,18 @@ void DenoiseY_PS(
         SpecularAlpha = 1.0f;
     }
 
-    // 각각 누적!
+    // 각각 누적
     float3 AccumulatedDiffuse = lerp(HistoryDiffuse, CurrentDiffuse, DiffuseAlpha);
     float3 AccumulatedSpecular = lerp(HistorySpecular, CurrentSpecular, SpecularAlpha);
     
     
-    // 2. 대망의 스플릿 스크린 출력!
+    // 스플릿 스크린 출력
     //if (UV.x < 0.4985f)
     if (UV.x < 0.0f)
     {
         OutFinalColor = float4(OriginalColor, 1.0f);
-        OutPureDiffuse = float4(0.0f, 0.0f, 0.0f, 1.0f); // 스플릿 영역의 역사서는 비워둡니다.
-        OutPureSpecular = float4(0.0f, 0.0f, 0.0f, 1.0f); // 스플릿 영역의 역사서는 비워둡니다.
+        OutPureDiffuse = float4(0.0f, 0.0f, 0.0f, 1.0f); 
+        OutPureSpecular = float4(0.0f, 0.0f, 0.0f, 1.0f); 
 
     }
     //else if (UV.x < 0.5015f)
@@ -785,19 +769,18 @@ void DenoiseY_PS(
     {
         if (SceneDepth > 100000.0f)
         {
-            // 하늘은 원본(OriginalColor) 대신 질문자님 세팅인 초록색으로 출력합니다.
             //OutColor = float4(0.0f, 1.0f, 0.0f, 1.0f);
             OutFinalColor = float4(OriginalColor, 1.0f);
             
-            OutPureDiffuse = float4(0.0f, 0.0f, 0.0f, 1.0f); // 스플릿 영역의 역사서는 비워둡니다.
-            OutPureSpecular = float4(0.0f, 0.0f, 0.0f, 1.0f); // 스플릿 영역의 역사서는 비워둡니다.
+            OutPureDiffuse = float4(0.0f, 0.0f, 0.0f, 1.0f); 
+            OutPureSpecular = float4(0.0f, 0.0f, 0.0f, 1.0f); 
         }
         else
         {
-            // 🔥 Target 0: 이번 프레임 화면에 보여줄 "완성본 (원본 + 누적GI)"
+            // Target 0: 이번 프레임 화면에 보여줄 완성본 (원본 + 누적GI)
             OutFinalColor = float4(OriginalColor + AccumulatedDiffuse + AccumulatedSpecular, 1.0f);
             
-            // 🔥 Target 1: 다음 프레임을 위해 저장할 "순수 GI"
+            // Target 1: 다음 프레임을 위해 저장할순수 GI"
             OutPureDiffuse = float4(AccumulatedDiffuse, 1.0f);
             OutPureSpecular = float4(AccumulatedSpecular, 1.0f);
         }

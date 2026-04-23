@@ -42,7 +42,7 @@ class FCustomSSGIShaderPS : public FGlobalShader
 };
 
 
-// 2. 매크로를 통해 C++ 클래스와 아까 만든 CustomSSGI.usf 파일의 MainPS 함수를 연결!
+// 매크로를 통해 C++ 클래스와 아까 만든 CustomSSGI.usf 파일의 MainPS 함수를 연결
 IMPLEMENT_GLOBAL_SHADER(FCustomSSGIShaderPS, "/Plugin/CustomSSGI/CustomSSGI.usf", "MainPS", SF_Pixel);
 // =========================================================================
 
@@ -245,7 +245,7 @@ void FCustomSSGIViewExtension::SubscribeToPostProcessingPass(EPostProcessingPass
 					FCustomSSGIDenoiseYPS::FParameters* PassYParams = GraphBuilder.AllocParameters<FCustomSSGIDenoiseYPS::FParameters>();
 
 
-					// 5. Pass 2의 3-Way MRT 타겟 연결!
+					// 5. Pass 2의 3-Way MRT 타겟 연결
 					PassYParams->RenderTargets[0] = FRenderTargetBinding(FinalTexture, ERenderTargetLoadAction::ENoAction);
 					PassYParams->RenderTargets[1] = FRenderTargetBinding(PureDiffuse, ERenderTargetLoadAction::ENoAction);
 					PassYParams->RenderTargets[2] = FRenderTargetBinding(PureSpecular, ERenderTargetLoadAction::ENoAction);
@@ -265,7 +265,7 @@ void FCustomSSGIViewExtension::SubscribeToPostProcessingPass(EPostProcessingPass
 
 					PassYParams->CommonSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 
-					// 엔진의 SceneTextures 묶음 안에서 '속도 버퍼(Velocity)'만 넘겨줍니다!
+					// 엔진의 SceneTextures 묶음 안에서 '속도 버퍼(Velocity)'만
 					//Pass2Params->VelocityTexture = Pass2Params->SceneTextures.GBufferVelocityTexture;
 					//Pass2Params->VelocitySampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 

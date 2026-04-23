@@ -15,7 +15,7 @@ void FCustomSSGIModule::StartupModule()
 	// This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
 	
 
-	// 플러그인 코어 로딩 확인용 에러 로그ㄴ
+	// 플러그인 코어 로딩 확인용 에러 로그
 	UE_LOG(LogTemp, Error, TEXT("==== CustomSSGI 플러그인 로딩 완료! ===="));
 
 	// 플러그인을 찾을 때까지 안전하게 확인합니다. (Null 크래시 방지)
@@ -29,7 +29,6 @@ void FCustomSSGIModule::StartupModule()
 
 	// 기존에 작성했던 훅 등록 코드	
 	// 플러그인이 로드될 때, 렌더 파이프라인에 우리의 훅을 던져서 등록합니다.
-	// 예약 코드!
 	FCoreDelegates::OnPostEngineInit.AddLambda([this]()
 		{
 			CustomSSGIViewExtension = FSceneViewExtensions::NewExtension<FCustomSSGIViewExtension>();
@@ -42,7 +41,7 @@ void FCustomSSGIModule::ShutdownModule()
 	// This function may be called during shutdown to clean up your module.  For modules that support dynamic reloading,
 	// we call this function before unloading the module.
 		
-	// 플러그인이 꺼질 때 훅을 회수합니다.
+	// 플러그인이 꺼질 때 훅을 회수
 	CustomSSGIViewExtension.Reset();
 }
 
