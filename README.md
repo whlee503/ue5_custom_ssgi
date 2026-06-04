@@ -180,13 +180,13 @@ The purpose of this comparison was not to claim that the custom SSGI is a full r
 ### Visual comparison
 
 <p align="center">
-  <img src="Docs/compare_lumen.png" width="48%" alt="UE5 Lumen">
-  <img src="Docs/compare_custom_ssgi.png" width="48%" alt="Custom SSGI">
+  <img src="Docs/Lumen_Screenshot.png" width="48%" alt="UE5 Lumen">
+  <img src="Docs/SSGI_Screenshot.png" width="48%" alt="Custom SSGI">
 </p>
 
 <p align="center">
-  <img src="Docs/compare_no_gi.png" width="48%" alt="No GI Direct Light Only">
-  <img src="Docs/compare_ue5_screen_space.png" width="48%" alt="UE5 Screen-Space GI">
+  <img src="Docs/UE5_None_Screenshot.png" width="48%" alt="No GI Direct Light Only">
+  <img src="Docs/UE5_SS_Screenshot.png" width="48%" alt="UE5 Screen-Space GI">
 </p>
 
 ### Performance comparison
