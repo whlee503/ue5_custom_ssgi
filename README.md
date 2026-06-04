@@ -4,8 +4,7 @@ A custom Screen Space Global Illumination (SSGI) prototype implemented as a **UE
 
 This project focuses not only on implementing real-time GI, but also on **profiling bottlenecks and optimizing the pipeline for practical performance**.
 
-> **Key result:** Implemented custom SSGI system on UE5. Reduced the total pipeline cost from **1.85 ms to 0.46 ms** (~75.13% optimization) while preserving visual quality.
-
+> **Key result:** Implemented a custom SSGI system on UE5. Reduced the internal custom SSGI pipeline cost from **1.85 ms to 0.46 ms** (~75.13% optimization), and compared it against No GI, Lumen, and UE5 Screen-Space GI in the same test scene. In the final comparison, Custom SSGI measured **5.03 ms Graphics Queue Avg**, adding only **+0.47 ms** over No GI and showing **21.8% lower rendering time than Lumen**.
 ---
 
 ## Verification Status
