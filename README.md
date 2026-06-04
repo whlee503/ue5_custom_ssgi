@@ -164,6 +164,54 @@ Using **NVIDIA Nsight**, I found that the main performance bottlenecks were:
 
 ---
 
+## Additional GI Mode Comparison
+
+After optimizing the custom SSGI pipeline, I also compared the result against several UE5 GI configurations in the same test scene.
+
+The purpose of this comparison was not to claim that the custom SSGI is a full replacement for Lumen, but to evaluate how much indirect lighting and color bleeding it can provide at a lower rendering cost in a controlled screen-space scenario.
+
+### Compared modes
+
+* **No GI**: Direct light only baseline
+* **Lumen**: UE5's high-quality GI baseline
+* **UE5 Screen-Space GI (Beta)**: Built-in screen-space GI comparison
+* **Custom SSGI**: My custom RDG-based screen-space GI implementation
+
+### Visual comparison
+
+<p align="center">
+  <img src="Docs/compare_lumen.png" width="48%" alt="UE5 Lumen">
+  <img src="Docs/compare_custom_ssgi.png" width="48%" alt="Custom SSGI">
+</p>
+
+<p align="center">
+  <img src="Docs/compare_no_gi.png" width="48%" alt="No GI Direct Light Only">
+  <img src="Docs/compare_ue5_screen_space.png" width="48%" alt="UE5 Screen-Space GI">
+</p>
+
+### Performance comparison
+
+Rendering time was measured using **UE5 stat GPU Graphics Queue Total Avg** on an **RTX 4070 Ti** environment.
+
+| Mode                | Rendering Time (Avg.) |   vs Lumen | Extra vs No GI | Estimated FPS |
+| ------------------- | --------------------: | ---------: | -------------: | ------------: |
+| No GI               |               4.56 ms |    -29.31% |              - |        219.30 |
+| Lumen               |               6.43 ms |          - |       +1.87 ms |        155.52 |
+| UE5 Screen-Space GI |               5.34 ms |     -17.0% |       +0.78 ms |        187.27 |
+| Custom SSGI         |           **5.03 ms** | **-21.8%** |   **+0.47 ms** |    **198.81** |
+
+> Lower rendering time is faster.
+> `Extra vs No GI` represents the additional rendering cost over the direct-light-only baseline.
+
+### Analysis
+
+The custom SSGI result is not intended to replace Lumen as a general-purpose GI solution.
+However, in this test scene, it produced visible indirect lighting and color bleeding with only **+0.47 ms** over the direct-light-only baseline, while showing **21.8% lower rendering time than Lumen**.
+
+This suggests that a custom screen-space GI pipeline can be useful as a lightweight GI option for selected scenes where screen-space limitations are acceptable.
+
+---
+
 ## Tech Stack
 
 - **Language:** C++
