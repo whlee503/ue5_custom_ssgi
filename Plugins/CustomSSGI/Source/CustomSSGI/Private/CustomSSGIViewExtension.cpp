@@ -31,8 +31,10 @@ static TAutoConsoleVariable<int32> CVarCustomSSGIMaxSteps(
 	ECVF_RenderThreadSafe);
 
 static TAutoConsoleVariable<float> CVarCustomSSGIDiffuseAlpha(
-	TEXT("r.CustomSSGI.Temporal.DiffuseAlpha"), 0.025f,
-	TEXT("Temporal blend weight for diffuse GI (0..1). Lower accumulates longer. Default 0.025."),
+	TEXT("r.CustomSSGI.Temporal.DiffuseAlpha"), 0.0025f,
+	TEXT("Temporal blend weight for diffuse GI (0..1). Lower accumulates longer. ")
+	TEXT("Default 0.0025 (~400 frame convergence), viable because depth-based ")
+	TEXT("history rejection keeps stale history from ghosting."),
 	ECVF_RenderThreadSafe);
 
 static TAutoConsoleVariable<float> CVarCustomSSGIClampGamma(
