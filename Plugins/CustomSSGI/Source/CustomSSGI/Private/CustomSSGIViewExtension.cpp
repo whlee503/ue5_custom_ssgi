@@ -134,8 +134,7 @@ void FCustomSSGIViewExtension::SubscribeToPostProcessingPass(EPostProcessingPass
 		// 재활성화 시 이전 프레임 잔상이 남지 않게 한다.
 		if (CVarCustomSSGIEnable.GetValueOnRenderThread() == 0)
 		{
-			DiffuseHistoryTexture.SafeRelease();
-			SpecularHistoryTexture.SafeRelease();
+			ViewHistories.Empty();
 			return;
 		}
 
@@ -153,10 +152,30 @@ void FCustomSSGIViewExtension::SubscribeToPostProcessingPass(EPostProcessingPass
 					FRDGTextureDesc Desc = SceneColor.Texture->Desc;
 					Desc.Flags |= TexCreate_RenderTargetable;
 
+					// 이 뷰의 히스토리 슬롯 (없으면 생성)
+					const uint32 ViewKey = View.GetViewKey();
+					TUniquePtr<FViewHistory>& HistorySlot = ViewHistories.FindOrAdd(ViewKey);
+					if (!HistorySlot)
+					{
+						HistorySlot = MakeUnique<FViewHistory>();
+					}
+					FViewHistory* History = HistorySlot.Get();
+					History->LastUsedFrame = GFrameCounterRenderThread;
+
+					// 오래 사용되지 않은 뷰(닫힌 PIE 뷰포트 등)의 히스토리는 정리해서
+					// GPU 메모리가 새지 않게 한다.
+					for (auto It = ViewHistories.CreateIterator(); It; ++It)
+					{
+						if (It->Value->LastUsedFrame + 300 < GFrameCounterRenderThread)
+						{
+							It.RemoveCurrent();
+						}
+					}
+
 					// 히스토리 버퍼 가져오기 (없거나 해상도가 바뀌었으면 검은색 더미로 리셋)
 					FRDGTextureRef CurrentHistoryDiffuse = nullptr;
-					if (this->DiffuseHistoryTexture.IsValid() && this->DiffuseHistoryTexture->GetDesc().Extent == Desc.Extent)
-						CurrentHistoryDiffuse = GraphBuilder.RegisterExternalTexture(this->DiffuseHistoryTexture);
+					if (History->Diffuse.IsValid() && History->Diffuse->GetDesc().Extent == Desc.Extent)
+						CurrentHistoryDiffuse = GraphBuilder.RegisterExternalTexture(History->Diffuse);
 					else
 					{
 						CurrentHistoryDiffuse = GraphBuilder.CreateTexture(Desc, TEXT("DummyHistoryDiffuse"));
@@ -164,8 +183,8 @@ void FCustomSSGIViewExtension::SubscribeToPostProcessingPass(EPostProcessingPass
 					}
 
 					FRDGTextureRef CurrentHistorySpecular = nullptr;
-					if (this->SpecularHistoryTexture.IsValid() && this->SpecularHistoryTexture->GetDesc().Extent == Desc.Extent)
-						CurrentHistorySpecular = GraphBuilder.RegisterExternalTexture(this->SpecularHistoryTexture);
+					if (History->Specular.IsValid() && History->Specular->GetDesc().Extent == Desc.Extent)
+						CurrentHistorySpecular = GraphBuilder.RegisterExternalTexture(History->Specular);
 					else
 					{
 						CurrentHistorySpecular = GraphBuilder.CreateTexture(Desc, TEXT("DummyHistorySpecular"));
@@ -254,8 +273,9 @@ void FCustomSSGIViewExtension::SubscribeToPostProcessingPass(EPostProcessingPass
 						PixelShaderY, PassYParams, SceneColor.ViewRect);
 
 					// 다음 프레임에 쓸 히스토리 저장 (RDG 수명 밖으로 추출)
-					GraphBuilder.QueueTextureExtraction(PureDiffuse, &this->DiffuseHistoryTexture);
-					GraphBuilder.QueueTextureExtraction(PureSpecular, &this->SpecularHistoryTexture);
+					// History는 힙(TUniquePtr)에 있으므로 그래프 실행 시점까지 포인터가 안전하다.
+					GraphBuilder.QueueTextureExtraction(PureDiffuse, &History->Diffuse);
+					GraphBuilder.QueueTextureExtraction(PureSpecular, &History->Specular);
 
 					// 디노이즈까지 완료된 최종 텍스처를 다음 포스트 프로세스 단계로 전달
 					return FScreenPassTexture(FinalTexture, SceneColor.ViewRect);
