@@ -9,3 +9,23 @@ Saved/
 
 Plugins/*/Binaries/
 Plugins/*/Intermediate/
+
+# Additional build/IDE artifacts
+Build/
+.idea/
+.vscode/
+*.VC.db
+*.VC.opendb
+
+# Per-developer editor content (UE convention)
+Content/Collections/
+Content/Developers/
+
+# Local-only content, not part of the public demo
+# (UndergroundSciFi is a marketplace asset pack - do not redistribute)
+Content/UndergroundSciFi/
+Content/NewMap2.umap
+Content/NewWorld2.umap
+
+# Local shader experiment backup
+Plugins/CustomSSGI/Shaders/CustomSSGI_2.usf
