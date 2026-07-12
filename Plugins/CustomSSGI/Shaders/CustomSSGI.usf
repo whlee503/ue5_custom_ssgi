@@ -250,6 +250,9 @@ void MainPS(
 
     float3 HitColor = float3(0.0f, 0.0f, 0.0f);
     bool bHit = false;
+    float HitDistance = 0.0f;
+    float RayT = JitterOffset / (float) MaxSteps;
+    float StepT = 1.0f / (float) MaxSteps;
 
     // ================  루프 시작 =================
     for (int i = 0; i < MaxSteps; ++i)
@@ -276,6 +279,7 @@ void MainPS(
             if (DepthDiff > 1.0f && DepthDiff < 200.0f)
             {
                 bHit = true;
+                HitDistance = RayT * MaxRayLength;
                 // 부딪힌 곳의 색상
                 HitColor = MySceneColor.SampleLevel(MySceneColorSampler, CurrentUV, 0).rgb;
                 break;
@@ -285,6 +289,7 @@ void MainPS(
         // Marching
         CurrentUV += StepUV;
         CurrentZ += StepZ;
+        RayT += StepT;
     }
     
     
@@ -300,6 +305,12 @@ void MainPS(
 
     if (bHit)
     {
+        // Fade screen-space GI by ray distance so far hits do not contribute
+        // with the same strength as nearby hits.
+        float MaxGIDistance = 2000.0f;
+        float DistanceFade = saturate(1.0f - HitDistance / MaxGIDistance);
+        DistanceFade *= DistanceFade;
+        
         // 몬테카를로 적분의 핵심: 자신이 당첨된 확률(PDF)로 나누어 주어야 에너지가 보존
         if (bIsSpecularRay)
         {
@@ -331,7 +342,7 @@ void MainPS(
             //FinalGI = HitColor * kS / max(SpecProbability, 0.001f);
             
             // 5. 스펙큘러 레이 결괏값 도출 (SpecularWeight 사용)
-            float3 FinalSpecular = HitColor * SpecularWeight / max(SpecProbability, 0.001f);
+            float3 FinalSpecular = HitColor * SpecularWeight * DistanceFade / max(SpecProbability, 0.001f);
             //float3 FinalSpecular = HitColor * kS / max(SpecProbability, 0.001f);
             
             // 스펙큘러에 기록, 디퓨즈는 비움
@@ -344,7 +355,7 @@ void MainPS(
             //FinalGI = HitColor * BaseColor * kD / max(1.0f - SpecProbability, 0.001f);
             
             // 디퓨즈 레이 결괏값 도출
-            float3 FinalDiffuse = HitColor * BaseColor * kD / max(1.0f - SpecProbability, 0.001f);
+            float3 FinalDiffuse = HitColor * BaseColor * kD * DistanceFade / max(1.0f - SpecProbability, 0.001f);
             
             //디퓨즈에 기록, 스펙큘러는 비움
             OutDiffuse = float4(FinalDiffuse, 1.0f);
