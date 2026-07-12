@@ -6,6 +6,11 @@
 Texture2D MySceneColor;
 SamplerState MySceneColorSampler;
 
+// C++ CVar에서 바인딩되는 튜닝 파라미터 (r.CustomSSGI.*)
+float MaxRayLength;         // r.CustomSSGI.MaxRayLength (cm)
+int MaxSteps;               // r.CustomSSGI.MaxSteps
+float DiffuseTemporalAlpha; // r.CustomSSGI.Temporal.DiffuseAlpha
+
 // ==========================================
 // 몬테카를로 샘플링을 위한 난수 생성기 (White Noise)
 // ==========================================
@@ -180,10 +185,8 @@ void MainPS(
  
    
     // ================= 본격적인 레이 마칭 (Screen-Space DDA) =================
+    // 최대 탐색 거리(MaxRayLength)와 스텝 수(MaxSteps)는 CVar로 튜닝 가능.
 
-    // 1. 최대 탐색 거리 설정 (2000cm = 20m)
-    float MaxRayLength = 2000.0f;
-    
     // 2. 3D 공간에서의 시작점과 끝점
     float3 RayStart = TranslatedWorldPos + WorldNormal * 2.0f; // 표면에서 2cm 띄움 (Self-intersection 방지)
     float3 RayEnd = RayStart + RayDir * MaxRayLength;
@@ -215,10 +218,7 @@ void MainPS(
 
     // 4. 화면(UV)에서 이동할 총 거리 벡터 계산
     float2 DeltaUV = EndUV - StartUV;
-    
-    // 몇 걸음(Step)을 걸을지 결정
-    int MaxSteps = 40;
-    
+
     // UV 1걸음(Step)의 크기
     float2 StepUV = DeltaUV / (float) MaxSteps;
     
@@ -635,8 +635,8 @@ void DenoiseY_PS(
     // ==========================================
     // 속성에 맞춘 시간적(Temporal) 알파 분리
     // ==========================================
-    // 디퓨즈: 노이즈가 많으므로 낮은 알파로 길게 누적
-    float DiffuseAlpha = 0.025f;
+    // 디퓨즈: 노이즈가 많으므로 낮은 알파로 길게 누적 (CVar로 튜닝 가능)
+    float DiffuseAlpha = DiffuseTemporalAlpha;
 
     // 스펙큘러: 거울(Roughness=0)이면 1.0(과거 무시/잔상 제거), 거칠면 0.05(과거 중시)
     float SpecularAlpha = lerp(1.0f, .05f, saturate(CenterRoughness * 16.0f));

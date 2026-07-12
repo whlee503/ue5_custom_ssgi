@@ -14,6 +14,27 @@
 
 DECLARE_GPU_STAT_NAMED(Stat_CustomSSGI, TEXT("Custom_SSGI Total"));
 
+// ================== 런타임 튜닝용 콘솔 변수 (r.CustomSSGI.*) ==================
+static TAutoConsoleVariable<int32> CVarCustomSSGIEnable(
+	TEXT("r.CustomSSGI.Enable"), 1,
+	TEXT("Enable the custom SSGI pipeline. 0: off, 1: on"),
+	ECVF_RenderThreadSafe);
+
+static TAutoConsoleVariable<float> CVarCustomSSGIMaxRayLength(
+	TEXT("r.CustomSSGI.MaxRayLength"), 2000.0f,
+	TEXT("Maximum screen-space trace distance in world units (cm). Default 2000 (20 m)."),
+	ECVF_RenderThreadSafe);
+
+static TAutoConsoleVariable<int32> CVarCustomSSGIMaxSteps(
+	TEXT("r.CustomSSGI.MaxSteps"), 40,
+	TEXT("Number of ray marching steps per pixel. Default 40."),
+	ECVF_RenderThreadSafe);
+
+static TAutoConsoleVariable<float> CVarCustomSSGIDiffuseAlpha(
+	TEXT("r.CustomSSGI.Temporal.DiffuseAlpha"), 0.025f,
+	TEXT("Temporal blend weight for diffuse GI (0..1). Lower accumulates longer. Default 0.025."),
+	ECVF_RenderThreadSafe);
+
 // ================== Pass 1: 레이 마칭 (MainPS) ==================
 class FCustomSSGIShaderPS : public FGlobalShader
 {
@@ -30,6 +51,10 @@ class FCustomSSGIShaderPS : public FGlobalShader
 		// 현재 렌더링 중인 씬 컬러 (히트 지점 radiance 샘플링용)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, MySceneColor)
 		SHADER_PARAMETER_SAMPLER(SamplerState, MySceneColorSampler)
+
+		// CVar 기반 튜닝 파라미터
+		SHADER_PARAMETER(float, MaxRayLength)
+		SHADER_PARAMETER(int32, MaxSteps)
 
 		RENDER_TARGET_BINDING_SLOTS()
 	END_SHADER_PARAMETER_STRUCT()
@@ -85,6 +110,9 @@ class FCustomSSGIDenoiseYPS : public FGlobalShader
 
 		SHADER_PARAMETER_SAMPLER(SamplerState, CommonSampler)
 
+		// CVar 기반 튜닝 파라미터
+		SHADER_PARAMETER(float, DiffuseTemporalAlpha)
+
 		RENDER_TARGET_BINDING_SLOTS()
 	END_SHADER_PARAMETER_STRUCT()
 };
@@ -102,6 +130,15 @@ void FCustomSSGIViewExtension::SubscribeToPostProcessingPass(EPostProcessingPass
 {
 	if (PassId == EPostProcessingPass::BeforeDOF)
 	{
+		// r.CustomSSGI.Enable 0 이면 패스를 등록하지 않고, 히스토리도 비워서
+		// 재활성화 시 이전 프레임 잔상이 남지 않게 한다.
+		if (CVarCustomSSGIEnable.GetValueOnRenderThread() == 0)
+		{
+			DiffuseHistoryTexture.SafeRelease();
+			SpecularHistoryTexture.SafeRelease();
+			return;
+		}
+
 		InOutPassCallbacks.Add(
 			FAfterPassCallbackDelegate::CreateLambda(
 				[this](FRDGBuilder& GraphBuilder, const FSceneView& View, const FPostProcessMaterialInputs& Inputs)
@@ -152,6 +189,8 @@ void FCustomSSGIViewExtension::SubscribeToPostProcessingPass(EPostProcessingPass
 					Pass1Params->SceneTextures = SceneTextureParams;
 					Pass1Params->MySceneColor = SceneColor.Texture;
 					Pass1Params->MySceneColorSampler = BilinearClampSampler;
+					Pass1Params->MaxRayLength = FMath::Max(CVarCustomSSGIMaxRayLength.GetValueOnRenderThread(), 1.0f);
+					Pass1Params->MaxSteps = FMath::Clamp(CVarCustomSSGIMaxSteps.GetValueOnRenderThread(), 1, 256);
 
 					TShaderMapRef<FCustomSSGIShaderPS> PixelShader1(GetGlobalShaderMap(View.GetFeatureLevel()));
 					FPixelShaderUtils::AddFullscreenPass(
@@ -205,6 +244,7 @@ void FCustomSSGIViewExtension::SubscribeToPostProcessingPass(EPostProcessingPass
 					PassYParams->CommonSampler = BilinearClampSampler;
 					PassYParams->MySceneColor = SceneColor.Texture;
 					PassYParams->MySceneColorSampler = BilinearClampSampler;
+					PassYParams->DiffuseTemporalAlpha = FMath::Clamp(CVarCustomSSGIDiffuseAlpha.GetValueOnRenderThread(), 0.0f, 1.0f);
 
 					TShaderMapRef<FCustomSSGIDenoiseYPS> PixelShaderY(GetGlobalShaderMap(View.GetFeatureLevel()));
 					FPixelShaderUtils::AddFullscreenPass(
