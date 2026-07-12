@@ -1,11 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+ï»¿// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
 
-// ¿ì¸®°¡ ¸¸µç ViewExtension Àü¹æ ¼±¾ğ
+// ìš°ë¦¬ê°€ ë§Œë“  ViewExtension ì „ë°© ì„ ì–¸
 class FCustomSSGIViewExtension;
 
 class FCustomSSGIModule : public IModuleInterface
@@ -16,7 +16,10 @@ public:
 	virtual void StartupModule() override;
 	virtual void ShutdownModule() override;
 
-	private:
-		// ÇÃ·¯±×ÀÎÀÌ ÄÑÁ® ÀÖ´Â µ¿¾È ViewExtensionÀÇ ¼ö¸íÀ» °ü¸®ÇÒ ½º¸¶Æ® Æ÷ÀÎÅÍ
-		TSharedPtr<FCustomSSGIViewExtension, ESPMode::ThreadSafe> CustomSSGIViewExtension;
+private:
+	// í”ŒëŸ¬ê·¸ì¸ì´ ì¼œì ¸ ìˆëŠ” ë™ì•ˆ ViewExtensionì˜ ìˆ˜ëª…ì„ ê´€ë¦¬í•  ìŠ¤ë§ˆíŠ¸ í¬ì¸í„°
+	TSharedPtr<FCustomSSGIViewExtension, ESPMode::ThreadSafe> CustomSSGIViewExtension;
+
+	// StartupModuleì—ì„œ ë“±ë¡í•œ OnPostEngineInit ë¸ë¦¬ê²Œì´íŠ¸ í•¸ë“¤ (Shutdown ì‹œ í•´ì œìš©)
+	FDelegateHandle OnPostEngineInitHandle;
 };
