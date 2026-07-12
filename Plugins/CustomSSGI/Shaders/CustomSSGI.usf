@@ -192,6 +192,19 @@ void MainPS(
     float4 StartClipPos = mul(float4(RayStart, 1.0f), View.TranslatedWorldToClip);
     float4 EndClipPos = mul(float4(RayEnd, 1.0f), View.TranslatedWorldToClip);
 
+    // 근평면 클리핑: 카메라 쪽으로 향하는 레이는 끝점이 카메라 뒤(w <= 0)로 넘어가면
+    // 원근 나눗셈(w 나누기)이 뒤집혀 마칭 방향이 무의미해진다.
+    // 클립 좌표는 월드 세그먼트를 따라 선형이므로, 끝점 w가 최소값이 되는
+    // 지점에서 세그먼트를 잘라내고, 잘린 비율만큼 월드 길이도 함께 줄인다.
+    float TracedRayLength = MaxRayLength;
+    const float MinClipW = 1.0f; // 카메라 앞 1cm
+    if (EndClipPos.w < MinClipW)
+    {
+        float ClipT = saturate((MinClipW - StartClipPos.w) / (EndClipPos.w - StartClipPos.w));
+        EndClipPos = lerp(StartClipPos, EndClipPos, ClipT);
+        TracedRayLength = MaxRayLength * ClipT;
+    }
+
     // W값 나누기 (원근 투영)
     float3 StartScreen = StartClipPos.xyz / StartClipPos.w;
     float3 EndScreen = EndClipPos.xyz / EndClipPos.w;
@@ -255,9 +268,10 @@ void MainPS(
                 // 화면공간 진행률(RayT)은 원근 때문에 월드공간 진행률과 비선형 관계.
                 // 1/w의 화면공간 선형성을 이용해 원근 보정 리매핑으로 정확한 월드 진행률을 구함.
                 // s = t*w0 / (w1 + t*(w0 - w1))  (t: 화면공간 비율, w0/w1: 시작/끝 클립 w)
+                // 주의: 근평면 클리핑 후이므로 세그먼트의 실제 월드 길이는 TracedRayLength.
                 float WorldT = RayT * StartClipPos.w
                              / max(EndClipPos.w + RayT * (StartClipPos.w - EndClipPos.w), 0.0001f);
-                HitDistance = WorldT * MaxRayLength;
+                HitDistance = WorldT * TracedRayLength;
 
                 // 부딪힌 곳의 색상
                 HitColor = MySceneColor.SampleLevel(MySceneColorSampler, CurrentUV, 0).rgb;
