@@ -35,6 +35,16 @@ static TAutoConsoleVariable<float> CVarCustomSSGIDiffuseAlpha(
 	TEXT("Temporal blend weight for diffuse GI (0..1). Lower accumulates longer. Default 0.025."),
 	ECVF_RenderThreadSafe);
 
+static TAutoConsoleVariable<float> CVarCustomSSGIClampGamma(
+	TEXT("r.CustomSSGI.Temporal.ClampGamma"), 99.0f,
+	TEXT("Std-dev multiplier for temporal variance clipping of history. ")
+	TEXT("With sparse 1spp GI a tight bound couples history to kernel-scale noise ")
+	TEXT("splotches, so the default is intentionally very loose: history is only ")
+	TEXT("reset where the neighborhood variance is ~zero (e.g. consistently no hits). ")
+	TEXT("Lower to 1-2 for scenes with dynamic lighting to suppress radiance-change ")
+	TEXT("ghosting that depth-based rejection cannot detect. <= 0 disables. Default 99."),
+	ECVF_RenderThreadSafe);
+
 // ================== Pass 1: 레이 마칭 (MainPS) ==================
 class FCustomSSGIShaderPS : public FGlobalShader
 {
@@ -112,6 +122,7 @@ class FCustomSSGIDenoiseYPS : public FGlobalShader
 
 		// CVar 기반 튜닝 파라미터
 		SHADER_PARAMETER(float, DiffuseTemporalAlpha)
+		SHADER_PARAMETER(float, TemporalClampGamma)
 
 		RENDER_TARGET_BINDING_SLOTS()
 	END_SHADER_PARAMETER_STRUCT()
@@ -264,6 +275,7 @@ void FCustomSSGIViewExtension::SubscribeToPostProcessingPass(EPostProcessingPass
 					PassYParams->MySceneColor = SceneColor.Texture;
 					PassYParams->MySceneColorSampler = BilinearClampSampler;
 					PassYParams->DiffuseTemporalAlpha = FMath::Clamp(CVarCustomSSGIDiffuseAlpha.GetValueOnRenderThread(), 0.0f, 1.0f);
+					PassYParams->TemporalClampGamma = CVarCustomSSGIClampGamma.GetValueOnRenderThread();
 
 					TShaderMapRef<FCustomSSGIDenoiseYPS> PixelShaderY(GetGlobalShaderMap(View.GetFeatureLevel()));
 					FPixelShaderUtils::AddFullscreenPass(
