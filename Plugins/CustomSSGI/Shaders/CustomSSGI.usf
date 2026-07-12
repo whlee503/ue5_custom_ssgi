@@ -279,7 +279,14 @@ void MainPS(
             if (DepthDiff > 1.0f && DepthDiff < 200.0f)
             {
                 bHit = true;
-                HitDistance = RayT * MaxRayLength;
+
+                // 화면공간 진행률(RayT)은 원근 때문에 월드공간 진행률과 비선형 관계.
+                // 1/w의 화면공간 선형성을 이용해 원근 보정 리매핑으로 정확한 월드 진행률을 구함.
+                // s = t*w0 / (w1 + t*(w0 - w1))  (t: 화면공간 비율, w0/w1: 시작/끝 클립 w)
+                float WorldT = RayT * StartClipPos.w
+                             / max(EndClipPos.w + RayT * (StartClipPos.w - EndClipPos.w), 0.0001f);
+                HitDistance = WorldT * MaxRayLength;
+
                 // 부딪힌 곳의 색상
                 HitColor = MySceneColor.SampleLevel(MySceneColorSampler, CurrentUV, 0).rgb;
                 break;
@@ -305,12 +312,13 @@ void MainPS(
 
     if (bHit)
     {
-        // Fade screen-space GI by ray distance so far hits do not contribute
-        // with the same strength as nearby hits.
-        float MaxGIDistance = 2000.0f;
+        // 거리 기반 감쇠: 물리 항이 아니라 화면공간 신뢰도/분산 제어용 편향(bias).
+        // 먼 히트일수록 두께 검사 오탐 가능성과 1spp 분산이 커지므로 기여도를 줄이고,
+        // 레이 최대 거리(MaxRayLength)에서 값/기울기가 모두 0이 되어 매끄럽게 소멸한다.
+        float MaxGIDistance = MaxRayLength;
         float DistanceFade = saturate(1.0f - HitDistance / MaxGIDistance);
         DistanceFade *= DistanceFade;
-        
+
         // 몬테카를로 적분의 핵심: 자신이 당첨된 확률(PDF)로 나누어 주어야 에너지가 보존
         if (bIsSpecularRay)
         {
@@ -341,8 +349,12 @@ void MainPS(
             // 스펙큘러 레이가 부딪힌 경우
             //FinalGI = HitColor * kS / max(SpecProbability, 0.001f);
             
+            // 실제 거울 반사는 거리에 따라 감쇠하지 않으므로, Roughness가 낮을수록
+            // 감쇠를 완화한다 (거울: 감쇠 없음, 거친 표면: 디퓨즈와 동일한 감쇠).
+            float SpecularFade = lerp(1.0f, DistanceFade, Roughness);
+
             // 5. 스펙큘러 레이 결괏값 도출 (SpecularWeight 사용)
-            float3 FinalSpecular = HitColor * SpecularWeight * DistanceFade / max(SpecProbability, 0.001f);
+            float3 FinalSpecular = HitColor * SpecularWeight * SpecularFade / max(SpecProbability, 0.001f);
             //float3 FinalSpecular = HitColor * kS / max(SpecProbability, 0.001f);
             
             // 스펙큘러에 기록, 디퓨즈는 비움
