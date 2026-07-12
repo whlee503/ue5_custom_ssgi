@@ -6,6 +6,12 @@
 Texture2D MySceneColor;
 SamplerState MySceneColorSampler;
 
+// C++ CVar에서 바인딩되는 튜닝 파라미터 (r.CustomSSGI.*)
+float MaxRayLength;         // r.CustomSSGI.MaxRayLength (cm)
+int MaxSteps;               // r.CustomSSGI.MaxSteps
+float DiffuseTemporalAlpha; // r.CustomSSGI.Temporal.DiffuseAlpha
+float TemporalClampGamma;   // r.CustomSSGI.Temporal.ClampGamma (<= 0 이면 클램핑 끔)
+
 // ==========================================
 // 몬테카를로 샘플링을 위한 난수 생성기 (White Noise)
 // ==========================================
@@ -180,10 +186,8 @@ void MainPS(
  
    
     // ================= 본격적인 레이 마칭 (Screen-Space DDA) =================
+    // 최대 탐색 거리(MaxRayLength)와 스텝 수(MaxSteps)는 CVar로 튜닝 가능.
 
-    // 1. 최대 탐색 거리 설정 (2000cm = 20m)
-    float MaxRayLength = 2000.0f;
-    
     // 2. 3D 공간에서의 시작점과 끝점
     float3 RayStart = TranslatedWorldPos + WorldNormal * 2.0f; // 표면에서 2cm 띄움 (Self-intersection 방지)
     float3 RayEnd = RayStart + RayDir * MaxRayLength;
@@ -191,6 +195,19 @@ void MainPS(
     // 3. 시작점과 끝점을 2D 클립 공간(화면 좌표)으로 미리 변환 (행렬 곱셈은 루프 밖에서 단 2번)
     float4 StartClipPos = mul(float4(RayStart, 1.0f), View.TranslatedWorldToClip);
     float4 EndClipPos = mul(float4(RayEnd, 1.0f), View.TranslatedWorldToClip);
+
+    // 근평면 클리핑: 카메라 쪽으로 향하는 레이는 끝점이 카메라 뒤(w <= 0)로 넘어가면
+    // 원근 나눗셈(w 나누기)이 뒤집혀 마칭 방향이 무의미해진다.
+    // 클립 좌표는 월드 세그먼트를 따라 선형이므로, 끝점 w가 최소값이 되는
+    // 지점에서 세그먼트를 잘라내고, 잘린 비율만큼 월드 길이도 함께 줄인다.
+    float TracedRayLength = MaxRayLength;
+    const float MinClipW = 1.0f; // 카메라 앞 1cm
+    if (EndClipPos.w < MinClipW)
+    {
+        float ClipT = saturate((MinClipW - StartClipPos.w) / (EndClipPos.w - StartClipPos.w));
+        EndClipPos = lerp(StartClipPos, EndClipPos, ClipT);
+        TracedRayLength = MaxRayLength * ClipT;
+    }
 
     // W값 나누기 (원근 투영)
     float3 StartScreen = StartClipPos.xyz / StartClipPos.w;
@@ -202,10 +219,7 @@ void MainPS(
 
     // 4. 화면(UV)에서 이동할 총 거리 벡터 계산
     float2 DeltaUV = EndUV - StartUV;
-    
-    // 몇 걸음(Step)을 걸을지 결정
-    int MaxSteps = 40;
-    
+
     // UV 1걸음(Step)의 크기
     float2 StepUV = DeltaUV / (float) MaxSteps;
     
@@ -255,9 +269,10 @@ void MainPS(
                 // 화면공간 진행률(RayT)은 원근 때문에 월드공간 진행률과 비선형 관계.
                 // 1/w의 화면공간 선형성을 이용해 원근 보정 리매핑으로 정확한 월드 진행률을 구함.
                 // s = t*w0 / (w1 + t*(w0 - w1))  (t: 화면공간 비율, w0/w1: 시작/끝 클립 w)
+                // 주의: 근평면 클리핑 후이므로 세그먼트의 실제 월드 길이는 TracedRayLength.
                 float WorldT = RayT * StartClipPos.w
                              / max(EndClipPos.w + RayT * (StartClipPos.w - EndClipPos.w), 0.0001f);
-                HitDistance = WorldT * MaxRayLength;
+                HitDistance = WorldT * TracedRayLength;
 
                 // 부딪힌 곳의 색상
                 HitColor = MySceneColor.SampleLevel(MySceneColorSampler, CurrentUV, 0).rgb;
@@ -497,7 +512,16 @@ void DenoiseY_PS(
     float3 BlurredDiffuse = float3(0.0f, 0.0f, 0.0f);
     float3 BlurredSpecular = float3(0.0f, 0.0f, 0.0f);
     float WeightSum = 0.0f;
-    
+
+    // 네이버후드 클리핑용 1/2차 모멘트 (블러 루프에서 함께 수집 - 추가 텍스처 읽기 없음)
+    // min/max AABB는 윈도우에 아웃라이어가 드나들 때 경계가 불연속으로 점프해서
+    // 블록 형태 아티팩트를 만들므로, 평균±γσ(variance clipping)로 부드럽게 제한한다.
+    float3 MomentDiffuse1 = float3(0.0f, 0.0f, 0.0f);
+    float3 MomentDiffuse2 = float3(0.0f, 0.0f, 0.0f);
+    float3 MomentSpecular1 = float3(0.0f, 0.0f, 0.0f);
+    float3 MomentSpecular2 = float3(0.0f, 0.0f, 0.0f);
+    float NeighborCount = 0.0f;
+
     // --------------------------------------------------
     // 언리얼 엔진의 '진짜 화면' 한계선
     // --------------------------------------------------
@@ -567,6 +591,13 @@ void DenoiseY_PS(
         float3 SampleDiff = IntermediateDiffuseTexture.Load(int3(OffsetPixel, 0)).rgb;
         float3 SampleSpec = IntermediateSpecularTexture.Load(int3(OffsetPixel, 0)).rgb;
 
+        // 네이버후드 클리핑용: 현재 프레임 신호의 1/2차 모멘트 수집
+        MomentDiffuse1 += SampleDiff;
+        MomentDiffuse2 += SampleDiff * SampleDiff;
+        MomentSpecular1 += SampleSpec;
+        MomentSpecular2 += SampleSpec * SampleSpec;
+        NeighborCount += 1.0f;
+
         // 가중치를 곱해서 누적
         BlurredDiffuse += SampleDiff * FinalWeight;
         BlurredSpecular += SampleSpec * FinalWeight;
@@ -614,20 +645,61 @@ void DenoiseY_PS(
     // 기반 재투영이 필요하지만 아직 미구현 상태 (README Limitations 참고).
 
     // 과거 데이터 꺼내오기
-    float3 HistoryDiffuse = HistoryDiffuseTexture.SampleLevel(CommonSampler, PastUV, 0).rgb;
+    // 히스토리 알파 채널에는 그 텍셀을 기록한 표면의 (당시 카메라 기준) 뷰 깊이가 들어 있다.
+    float4 HistoryDiffuseSample = HistoryDiffuseTexture.SampleLevel(CommonSampler, PastUV, 0);
+    float3 HistoryDiffuse = HistoryDiffuseSample.rgb;
+    float HistoryViewDepth = HistoryDiffuseSample.a;
     float3 HistorySpecular = HistorySpecularTexture.SampleLevel(CommonSampler, PastUV, 0).rgb;
 
+    // ==========================================
+    // 히스토리 유효성 검증 (Disocclusion 기각)
+    // ==========================================
+    // 주의: ClipPos를 w=1로 정규화해 넣었기 때문에 PrevClipPos 전체가 현재 클립 w
+    // (=현재 뷰 깊이)로 나눠진 스케일이다. 따라서 PrevClipPos.w는 절대 깊이가 아니라
+    // '이전/현재 뷰 깊이 비율'이며, 실제 이전 뷰 깊이는 SceneDepth를 곱해 복원한다.
+    float PrevViewDepth = SceneDepth * PrevClipPos.w;
+
+    // 이 표면이 이전 프레임 카메라에서 가졌어야 할 뷰 깊이와 히스토리에 실제
+    // 기록된 깊이가 크게 다르면, 그 텍셀은 당시 다른 표면(가리고 있던 물체)이
+    // 기록한 것이므로 히스토리를 버린다.
+    bool bHistoryDepthValid = abs(HistoryViewDepth - PrevViewDepth) < PrevViewDepth * 0.1f;
+
+    // 재투영 좌표 유효성: 0~1이 아니라 실제 렌더 영역(BufferBilinearUVMinMax) 기준으로
+    // 검사하고, 이전 카메라 뒤(w <= 0)로 넘어간 경우도 무효 처리한다.
+    bool bPastUVValid = PrevClipPos.w > 0.0f
+        && all(PastUV >= ValidUVRect.xy) && all(PastUV <= ValidUVRect.zw);
+
+    // ==========================================
+    // 네이버후드 클리핑 (Variance Clipping, 평균 ± γσ)
+    // ==========================================
+    // 히스토리를 "현재 프레임 이웃이 그럴듯하다고 보는 색 범위"로 제한해서,
+    // 조명 변화/디스오클루전 시 낡은 값이 잔상으로 남는 것을 막는다.
+    // γ(TemporalClampGamma)가 강도 노브: 작을수록 반응성/노이즈, 클수록 부드러움/잔상.
+    if (NeighborCount > 0.0f && TemporalClampGamma > 0.0f)
+    {
+        float3 MeanDiffuse = MomentDiffuse1 / NeighborCount;
+        float3 SigmaDiffuse = sqrt(max(MomentDiffuse2 / NeighborCount - MeanDiffuse * MeanDiffuse, 0.0f));
+        HistoryDiffuse = clamp(HistoryDiffuse,
+            MeanDiffuse - SigmaDiffuse * TemporalClampGamma,
+            MeanDiffuse + SigmaDiffuse * TemporalClampGamma);
+
+        float3 MeanSpecular = MomentSpecular1 / NeighborCount;
+        float3 SigmaSpecular = sqrt(max(MomentSpecular2 / NeighborCount - MeanSpecular * MeanSpecular, 0.0f));
+        HistorySpecular = clamp(HistorySpecular,
+            MeanSpecular - SigmaSpecular * TemporalClampGamma,
+            MeanSpecular + SigmaSpecular * TemporalClampGamma);
+    }
 
     // ==========================================
     // 속성에 맞춘 시간적(Temporal) 알파 분리
     // ==========================================
-    // 디퓨즈: 노이즈가 많으므로 낮은 알파로 길게 누적
-    float DiffuseAlpha = 0.025f;
+    // 디퓨즈: 노이즈가 많으므로 낮은 알파로 길게 누적 (CVar로 튜닝 가능)
+    float DiffuseAlpha = DiffuseTemporalAlpha;
 
     // 스펙큘러: 거울(Roughness=0)이면 1.0(과거 무시/잔상 제거), 거칠면 0.05(과거 중시)
     float SpecularAlpha = lerp(1.0f, .05f, saturate(CenterRoughness * 16.0f));
 
-    if (any(PastUV < 0.0f) || any(PastUV > 1.0f))
+    if (!bPastUVValid || !bHistoryDepthValid)
     {
         DiffuseAlpha = 1.0f;
         SpecularAlpha = 1.0f;
@@ -638,11 +710,16 @@ void DenoiseY_PS(
     float3 AccumulatedSpecular = lerp(HistorySpecular, CurrentSpecular, SpecularAlpha);
 
 
+    // 히스토리 알파에 저장할 이 픽셀의 뷰 깊이.
+    // 다음 프레임의 디스오클루전 검사에 쓰인다. (fp16 렌더 타겟이면 ~65504cm에서
+    // 포화되지만, 스카이는 별도 분기로 걸러지고 초과분은 기각으로 이어질 뿐이다)
+    float HistoryDepthToStore = SceneDepth;
+
     // 스카이(무한 원거리)는 GI 없이 원본 그대로 통과
     if (SceneDepth > 100000.0f)
     {
         OutFinalColor = float4(OriginalColor, 1.0f);
-        OutPureDiffuse = float4(0.0f, 0.0f, 0.0f, 1.0f);
+        OutPureDiffuse = float4(0.0f, 0.0f, 0.0f, HistoryDepthToStore);
         OutPureSpecular = float4(0.0f, 0.0f, 0.0f, 1.0f);
     }
     else
@@ -650,8 +727,8 @@ void DenoiseY_PS(
         // Target 0: 이번 프레임 화면에 보여줄 완성본 (원본 + 누적 GI)
         OutFinalColor = float4(OriginalColor + AccumulatedDiffuse + AccumulatedSpecular, 1.0f);
 
-        // Target 1/2: 다음 프레임을 위해 저장할 순수 GI
-        OutPureDiffuse = float4(AccumulatedDiffuse, 1.0f);
+        // Target 1/2: 다음 프레임을 위해 저장할 순수 GI (디퓨즈 알파 = 뷰 깊이)
+        OutPureDiffuse = float4(AccumulatedDiffuse, HistoryDepthToStore);
         OutPureSpecular = float4(AccumulatedSpecular, 1.0f);
     }
 }

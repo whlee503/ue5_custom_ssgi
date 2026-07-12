@@ -163,6 +163,38 @@ Using **NVIDIA Nsight**, I found that the main performance bottlenecks were:
 
 ---
 
+## Follow-up Improvements
+
+After the initial implementation and optimization pass, the pipeline went through a review-driven hardening round focused on trace accuracy and temporal stability.
+
+### Trace accuracy
+- **Distance-based fade for ray hits.** GI contribution now fades with hit distance (squared falloff reaching zero exactly at the trace limit). The hit distance is computed with a **perspective-correct remap** of the screen-space march fraction using the segment's clip-space `w` endpoints — using the raw screen-space fraction would make the fade view-dependent. The fade is a screen-space confidence/variance control (an intentional bias), not a physical attenuation term, and is softened by roughness for specular since real mirror reflections do not attenuate with distance.
+- **Near-plane clipping.** Rays pointing toward the camera could place the segment end point behind the camera (clip `w <= 0`), flipping the perspective divide and marching in a meaningless direction. The traced segment is now clipped against the near plane, and the traced world length is scaled accordingly so the hit-distance remap stays exact.
+
+### Temporal stability
+- **Per-view history.** History buffers are keyed by `View.GetViewKey()`, so multiple viewports (editor + PIE) no longer overwrite each other's accumulation. Entries from closed viewports are evicted automatically.
+- **Depth-based history rejection.** Each pixel's view depth is stored in the otherwise-unused alpha channel of the diffuse history target. On reprojection it is compared against the depth the surface should have had in the previous frame; a mismatch means the history texel was written by a different (occluding) surface, and history is discarded. This removes disocclusion ghosting at object edges during camera translation.
+- **Neighborhood variance clipping.** Reprojected history can be clamped to the mean ± γσ of the current frame's blurred GI (collected inside the existing blur loop at no extra bandwidth cost). A min/max AABB was evaluated first but produced blocky artifacts: with sparse 1spp GI, any tight neighborhood bound couples the smooth history to kernel-scale noise splotches. The validated default is therefore intentionally loose (γ = 99), which effectively only resets history where the neighborhood is unanimously empty; γ can be lowered for scenes with dynamic lighting.
+- **Longer accumulation.** With rejection handling stale history, the default diffuse temporal blend weight was lowered from 0.025 to **0.0025** (~400-frame convergence), visibly reducing residual noise in the static demo scene.
+- **Reprojection validation** against the real render rect (`View.BufferBilinearUVMinMax`) instead of the 0–1 UV range, plus rejection of points behind the previous camera.
+
+### Runtime tuning (console variables)
+
+| CVar | Default | Description |
+| --- | ---: | --- |
+| `r.CustomSSGI.Enable` | 1 | Toggle the whole pipeline. Disabling also releases history buffers. |
+| `r.CustomSSGI.MaxRayLength` | 2000 | Maximum trace distance in world units (cm). |
+| `r.CustomSSGI.MaxSteps` | 40 | Ray marching steps per pixel. |
+| `r.CustomSSGI.Temporal.DiffuseAlpha` | 0.0025 | Diffuse temporal blend weight; lower accumulates longer. |
+| `r.CustomSSGI.Temporal.ClampGamma` | 99 | Variance clipping strength; lower is more responsive, `<= 0` disables. |
+
+### Code quality
+- Removed several hundred lines of dead/commented-out experiments across the shader and plugin C++.
+- Fixed a GPU stat scope that measured nothing under deferred RDG execution (`SCOPED_GPU_STAT` → `RDG_GPU_STAT_SCOPE`).
+- Fixed module header encoding (CP949 → UTF-8) and delegate lifetime handling on module shutdown.
+
+---
+
 ## Additional GI Mode Comparison
 
 After optimizing the custom SSGI pipeline, I also compared the result against several UE5 GI configurations in the same test scene.
@@ -340,9 +372,11 @@ This is a **graphics programming prototype**, not a production replacement for U
 
 Current limitations include:
 - screen-space techniques cannot recover information outside the visible frame
-- temporal methods depend on stable reprojection/history quality
+- moving objects are not yet velocity-reprojected (the demo scene is static; camera motion, including translation, is fully reprojected)
+- rays that miss return zero radiance — there is no sky/probe fallback yet, so the technique loses energy compared to a reference
+- hit radiance is taken from the camera-facing scene color, which assumes hit surfaces are roughly Lambertian
 - quality/performance trade-offs still depend on scene conditions
-- production use would require more robustness, validation, scalability work, and artist-facing controls
+- production use would require more robustness, validation, and scalability work
 
 ---
 
