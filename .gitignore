@@ -26,6 +26,3 @@ Content/Developers/
 Content/UndergroundSciFi/
 Content/NewMap2.umap
 Content/NewWorld2.umap
-
-# Local shader experiment backup
-Plugins/CustomSSGI/Shaders/CustomSSGI_2.usf
